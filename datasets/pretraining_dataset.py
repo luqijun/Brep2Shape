@@ -211,9 +211,13 @@ class PretrainingDataset(Dataset):
         if max_facet_len <= 0 or max_arc_len <= 0:
             raise ValueError("Padding lengths must be positive")
 
+        # faces: list of [num_primitives, ...] with length = num_faces
         faces = data["face"]
+        # in_masks: list of [num_primitives] with length = num_faces
         in_masks = data["face_vis_mask"]
+        # tri_normals: list of [num_primitives, 7] with length = num_faces
         tri_normals = data["tri_normal"]
+        # edges: list of [num_primitives, ...] with length = num_edges
         edges = data["edge"]
         if not faces or not edges:
             raise ValueError("A B-rep sample must contain at least one face and one edge")
@@ -227,8 +231,11 @@ class PretrainingDataset(Dataset):
         generator = torch.Generator()
 
         for nodes, tri_normal, in_mask in zip(faces, tri_normals, in_masks):
+            # nodes: [num_primitives, num_points, channels]
             nodes = torch.as_tensor(nodes)
+            # tri_normal: [num_primitives, 7]
             tri_normal = torch.as_tensor(tri_normal)
+            # in_mask: [num_primitives]
             in_mask = torch.as_tensor(in_mask)
             if nodes.shape[0] == 0:
                 raise ValueError("Faces with zero Bézier primitives are not supported")
@@ -248,10 +255,13 @@ class PretrainingDataset(Dataset):
                 tri_normal_padded = tri_normal
             else:
                 if padding_mode == "zero":
+                    # nodes_padded: [max_facet_len, num_points, channels]
                     nodes_padded = nodes.new_zeros((max_facet_len, *nodes.shape[1:]))
+                    # tri_normal_padded: [max_facet_len, 7]
                     tri_normal_padded = tri_normal.new_zeros(
                         (max_facet_len, *tri_normal.shape[1:])
                     )
+                    # in_mask_padded: [max_facet_len]
                     in_mask_padded = in_mask.new_zeros(max_facet_len)
                     nodes_padded[:num_nodes] = nodes
                     tri_normal_padded[:num_nodes] = tri_normal
@@ -266,6 +276,7 @@ class PretrainingDataset(Dataset):
                         :max_facet_len
                     ]
 
+            # padding_mask: [max_facet_len], True = valid, False = padded
             padding_mask = torch.zeros(max_facet_len, dtype=torch.bool)
             padding_mask[:num_nodes] = True
 
@@ -277,6 +288,7 @@ class PretrainingDataset(Dataset):
         edges_padded = []
         edge_padding_masks = []
         for edge in edges:
+            # edge: [num_primitives, num_points, channels]
             edge = torch.as_tensor(edge)
             if edge.shape[0] == 0:
                 raise ValueError("Edges with zero Bézier primitives are not supported")
@@ -285,24 +297,33 @@ class PretrainingDataset(Dataset):
                 edge = edge[indices]
 
             num_primitives = edge.shape[0]
+            # edge_padded: [max_arc_len, num_points, channels]
             edge_padded = edge.new_zeros((max_arc_len, *edge.shape[1:]))
+            # padding_mask: [max_arc_len], True = valid, False = padded
             padding_mask = torch.zeros(max_arc_len, dtype=torch.bool)
             edge_padded[:num_primitives] = edge
             padding_mask[:num_primitives] = True
             edges_padded.append(edge_padded)
             edge_padding_masks.append(padding_mask)
 
+        # data["face"]: [num_faces, max_facet_len, num_points, channels]
         data["face"] = torch.stack(faces_padded)
+        # data["face_vis_mask"]: [num_faces, max_facet_len]
         data["face_vis_mask"] = torch.stack(in_masks_padded)
+        # data["face_padding_mask"]: [num_faces, max_facet_len]
         data["face_padding_mask"] = torch.stack(face_padding_masks)
+        # data["tri_normal"]: [num_faces, max_facet_len, 7]
         data["tri_normal"] = torch.stack(tri_normals_padded)
+        # data["edge"]: [num_edges, max_arc_len, num_points, channels]
         data["edge"] = torch.stack(edges_padded)
+        # data["edge_padding_mask"]: [num_edges, max_arc_len]
         data["edge_padding_mask"] = torch.stack(edge_padding_masks)
 
         return data
 
     def normalize(self, data):
         """Normalize model inputs and targets, then discard temporary points."""
+        # points: [num_faces, num_points, 3]
         points = torch.as_tensor(data["points"])
         if points.ndim != 3 or points.shape[-1] != 3:
             raise ValueError(
@@ -312,17 +333,22 @@ class PretrainingDataset(Dataset):
         if not torch.isfinite(points).all():
             raise ValueError("points contains NaN or infinite values")
 
+        # center: [3], scale: scalar
         center = points.mean(dim=(0, 1))
         centered_points = points - center
         scale = centered_points.abs().amax().clamp_min(NORMALIZATION_EPS)
 
+        # uv_face_points: [num_faces, num_uv_samples, num_uv_samples, 3]
         uv_face_points = torch.as_tensor(data["uv_face_points"])
+        # uv_edge_points: [num_edges, num_uv_samples, 3]
         uv_edge_points = torch.as_tensor(data["uv_edge_points"])
         data["uv_face_points"] = (uv_face_points - center) / scale
         data["uv_edge_points"] = (uv_edge_points - center) / scale
 
+        # edges: list of [num_primitives, num_points, channels]
         edges = [torch.as_tensor(edge).clone() for edge in data["edge"]]
         for edge in edges:
+            # edge[..., :3]: [num_primitives, num_points, 3]
             edge[..., :3] = (edge[..., :3] - center) / scale
         data["edge"] = edges
         data.pop("points", None)
@@ -352,7 +378,10 @@ class PretrainingDataset(Dataset):
         offset: int,
     ) -> torch.Tensor:
         """Offset only valid entries of a padded index tensor."""
+        # indices: [num_items, max_len]
+        # lengths: [num_items]
         shifted = indices.clone()
+        # valid: [num_items, max_len]
         valid = torch.arange(indices.shape[1]).unsqueeze(0) < lengths.unsqueeze(1)
         shifted[valid] += offset
         return shifted
@@ -361,19 +390,24 @@ class PretrainingDataset(Dataset):
         if not batch:
             raise ValueError("Cannot collate an empty batch")
 
+        # graphs: list of DGLGraph with length = batch_size
         graphs = [sample["graph"] for sample in batch]
         line_graphs = [sample["line_graph"] for sample in batch]
         graph_file_paths = [sample["graph_file_path"] for sample in batch]
 
+        # face_counts: [batch_size]
         face_counts = torch.tensor(
             [sample["face"].shape[0] for sample in batch], dtype=torch.long
         )
+        # edge_counts: [batch_size]
         edge_counts = torch.tensor(
             [sample["edge"].shape[0] for sample in batch], dtype=torch.long
         )
+        # wire_counts: [batch_size]
         wire_counts = torch.tensor(
             [sample["edge_index"].shape[0] for sample in batch], dtype=torch.long
         )
+        # offsets: [batch_size]
         face_offsets = torch.cumsum(face_counts, dim=0) - face_counts
         edge_offsets = torch.cumsum(edge_counts, dim=0) - edge_counts
         wire_offsets = torch.cumsum(wire_counts, dim=0) - wire_counts
@@ -384,6 +418,7 @@ class PretrainingDataset(Dataset):
         for sample, face_offset, edge_offset, wire_offset in zip(
             batch, face_offsets, edge_offsets, wire_offsets
         ):
+            # adj_face_index: [num_faces, MAX_ADJACENT_FACES]
             adj_face_indices.append(
                 self._offset_padded_indices(
                     sample["adj_face_index"],
@@ -391,6 +426,7 @@ class PretrainingDataset(Dataset):
                     int(face_offset),
                 )
             )
+            # edge_index: [num_wires, MAX_EDGES_PER_WIRE]
             edge_indices.append(
                 self._offset_padded_indices(
                     sample["edge_index"],
@@ -398,6 +434,7 @@ class PretrainingDataset(Dataset):
                     int(edge_offset),
                 )
             )
+            # wire_index: [num_faces, MAX_WIRES_PER_FACE]
             wire_indices.append(
                 self._offset_padded_indices(
                     sample["wire_index"],
@@ -406,7 +443,9 @@ class PretrainingDataset(Dataset):
                 )
             )
 
+        # batched_graph: DGLGraph (merged), num_nodes = sum(face_counts), num_edges = sum(edge_counts)
         batched_graph = dgl.batch(graphs)
+        # batched_line_graph: DGLGraph (merged), num_nodes = sum(edge_counts)
         batched_line_graph = dgl.batch(line_graphs)
 
         node_feature_keys = (
@@ -418,10 +457,12 @@ class PretrainingDataset(Dataset):
         )
         edge_feature_keys = ("edge", "edge_padding_mask", "uv_edge_points")
         for key in node_feature_keys:
+            # batched_graph.ndata[key]: [sum(face_counts), ...]
             batched_graph.ndata[key] = torch.cat(
                 [sample[key] for sample in batch], dim=0
             )
         for key in edge_feature_keys:
+            # batched_graph.edata[key]: [sum(edge_counts), ...]
             batched_graph.edata[key] = torch.cat(
                 [sample[key] for sample in batch], dim=0
             )
@@ -431,15 +472,21 @@ class PretrainingDataset(Dataset):
             "line_graph": batched_line_graph,
             "num_faces_per_solid": face_counts,
             "graph_file_path": graph_file_paths,
+            # adj_face_index: [sum(num_faces), MAX_ADJACENT_FACES]
             "adj_face_index": torch.cat(adj_face_indices, dim=0),
+            # adj_face_index_length: [sum(num_faces)]
             "adj_face_index_length": torch.cat(
                 [sample["adj_face_index_length"] for sample in batch], dim=0
             ),
+            # edge_index: [sum(num_wires), MAX_EDGES_PER_WIRE]
             "edge_index": torch.cat(edge_indices, dim=0),
+            # edge_index_length: [sum(num_wires)]
             "edge_index_length": torch.cat(
                 [sample["edge_index_length"] for sample in batch], dim=0
             ),
+            # wire_index: [sum(num_faces), MAX_WIRES_PER_FACE]
             "wire_index": torch.cat(wire_indices, dim=0),
+            # wire_index_length: [sum(num_faces)]
             "wire_index_length": torch.cat(
                 [sample["wire_index_length"] for sample in batch], dim=0
             ),
@@ -512,6 +559,7 @@ class PretrainingDataset(Dataset):
                 "Line-graph node count must equal the number of B-rep edges: "
                 f"line_graph={line_graph.num_nodes()}, edges={num_edges}",
             )
+        # uv_face_points: [num_faces, num_uv_samples, num_uv_samples, 3]
         if face["uv_face_points"].shape != (
             num_faces,
             self.num_uv_samples,
@@ -522,6 +570,7 @@ class PretrainingDataset(Dataset):
                 None,
                 f"Unexpected face target shape: {tuple(face['uv_face_points'].shape)}",
             )
+        # uv_edge_points: [num_edges, num_uv_samples, 3]
         if topo["uv_edge_points"].shape != (num_edges, self.num_uv_samples, 3):
             return (
                 None,
@@ -536,8 +585,6 @@ class PretrainingDataset(Dataset):
 
     def load_face(self, file_path):
         """Load face primitives and the face-level shape prediction target."""
-        # Legacy preprocessed files contain Python and NumPy objects, so they
-        # cannot all be read with weights_only=True. Only load trusted files.
         labels = torch.load(file_path, map_location="cpu", weights_only=False)
         required_keys = {"nodes", "in_mask", "points", "tri_normals"}
         missing = required_keys.difference(labels)
@@ -547,6 +594,7 @@ class PretrainingDataset(Dataset):
         if self.num_uv_samples == 3:
             if "uv_face_points" not in labels:
                 raise KeyError(f"Face file {file_path} is missing uv_face_points")
+            # uv_face_points: [num_faces, 3, 3, 3]
             uv_face_points = _to_float_tensor(labels["uv_face_points"])
         else:
             uv_file = self._more_uv_grid_path(file_path, "_uvgrid.bin")
@@ -557,13 +605,19 @@ class PretrainingDataset(Dataset):
             )
             if key not in uv_data:
                 raise KeyError(f"UV file {uv_file} is missing {key}")
+            # uv_face_points: [num_faces, num_uv_samples+2, num_uv_samples+2, 3]
             uv_face_points = _to_float_tensor(uv_data[key])
 
         return {
+            # "face": list of [num_primitives, num_points, channels] with length = num_faces
             "face": labels["nodes"],
+            # "face_vis_mask": list of [num_primitives] with length = num_faces
             "face_vis_mask": labels["in_mask"],
+            # "points": [num_faces, num_points, 3]
             "points": torch.as_tensor(labels["points"]),
+            # "tri_normal": list of [num_primitives, 7] with length = num_faces
             "tri_normal": labels["tri_normals"],
+            # "uv_face_points": [num_faces, num_uv_samples, num_uv_samples, 3]
             "uv_face_points": uv_face_points,
         }
 
@@ -577,12 +631,18 @@ class PretrainingDataset(Dataset):
                 f"Topology file {file_path} is missing keys: {sorted(missing)}"
             )
 
+        # adj_face_index: [num_faces, MAX_ADJACENT_FACES]
+        # adj_face_index_length: [num_faces]
         adj_face_index_tensor, adj_face_index_length = pad_or_sample(
             solid["adj_face_index"], MAX_ADJACENT_FACES, dtype=torch.long
         )
+        # wire_index: [num_faces, MAX_WIRES_PER_FACE]
+        # wire_index_length: [num_faces]
         wire_index_tensor, wire_index_length = pad_or_sample(
             solid["wire_index"], MAX_WIRES_PER_FACE, dtype=torch.long
         )
+        # edge_index: [num_wires, MAX_EDGES_PER_WIRE]
+        # edge_index_length: [num_wires]
         edge_index_tensor, edge_index_length = pad_or_sample(
             solid["edge_index"], MAX_EDGES_PER_WIRE, dtype=torch.long
         )
@@ -590,6 +650,7 @@ class PretrainingDataset(Dataset):
         if self.num_uv_samples == 3:
             if "uv_edge_points" not in solid:
                 raise KeyError(f"Topology file {file_path} is missing uv_edge_points")
+            # uv_edge_points: [num_edges, 3, 3]
             uv_edge_points = _to_float_tensor(solid["uv_edge_points"])
         else:
             uv_file = self._more_uv_grid_path(file_path, "_uvgrid_edge.bin")
@@ -597,15 +658,24 @@ class PretrainingDataset(Dataset):
             key = f"uv_edge_points_{self.num_uv_samples + 2}"
             if key not in uv_data:
                 raise KeyError(f"UV file {uv_file} is missing {key}")
+            # uv_edge_points: [num_edges, num_uv_samples+2, 3]
             uv_edge_points = _to_float_tensor(uv_data[key])
 
         return {
+            # "edge": list of [num_primitives, num_points, channels] with length = num_edges
             "edge": solid["edge"],
+            # "uv_edge_points": [num_edges, num_uv_samples, 3]
             "uv_edge_points": uv_edge_points,
+            # "edge_index_length": [num_wires]
             "edge_index_length": edge_index_length,
+            # "wire_index_length": [num_faces]
             "wire_index_length": wire_index_length,
+            # "adj_face_index_length": [num_faces]
             "adj_face_index_length": adj_face_index_length,
+            # "edge_index": [num_wires, MAX_EDGES_PER_WIRE]
             "edge_index": edge_index_tensor,
+            # "wire_index": [num_faces, MAX_WIRES_PER_FACE]
             "wire_index": wire_index_tensor,
+            # "adj_face_index": [num_faces, MAX_ADJACENT_FACES]
             "adj_face_index": adj_face_index_tensor,
         }

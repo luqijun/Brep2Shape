@@ -57,6 +57,7 @@ class SegmentationPL(pl.LightningModule):
         self.best_acc_iou = 0.0
 
     def forward(self, batch):
+        # logits: [num_faces_total, num_classes]
         return self.model(batch)
 
     def _model_inputs(self, batch):
@@ -73,7 +74,9 @@ class SegmentationPL(pl.LightningModule):
         iou,
     ) -> torch.Tensor:
         inputs = self._model_inputs(batch)
+        # labels: [num_faces_total]
         labels = inputs["graph"].ndata["label"]
+        # logits: [num_faces_total, num_classes]
         logits = self(inputs)
         loss = F.cross_entropy(logits, labels)
         batch_size = labels.shape[0]
@@ -134,6 +137,7 @@ class SegmentationPL(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         """Record the best validation IoU and accuracy reached so far."""
+        # current_iou, current_acc: scalar tensors
         current_iou = self.val_iou.compute()
         current_acc = self.val_acc.compute()
         if current_iou > self.best_val_iou:

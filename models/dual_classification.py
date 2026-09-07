@@ -92,6 +92,7 @@ class DualClassification(nn.Module):
         )
 
     def forward(self, batch):
+        # encoding.solid: [batch_size, graph_emb_dim]
         encoding = encode_brep(
             batch,
             curve_layer=self.curve_layer,
@@ -99,4 +100,5 @@ class DualClassification(nn.Module):
             graph_layer=self.graph_layer,
             use_checkpoint=self.use_checkpoint,
         )
+        # logits: [batch_size, num_classes]
         return self.head(encoding.solid)

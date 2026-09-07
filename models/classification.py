@@ -46,6 +46,7 @@ class ClassificationPL(pl.LightningModule):
         self.best_acc_epoch = 0
 
     def forward(self, batch):
+        # logits: [batch_size, num_classes]
         return self.model(batch)
 
     def _model_inputs(self, batch):
@@ -55,7 +56,9 @@ class ClassificationPL(pl.LightningModule):
         }
 
     def _shared_step(self, batch, stage: str, metric) -> torch.Tensor:
+        # labels: [batch_size]
         labels = batch["label"].to(self.device)
+        # logits: [batch_size, num_classes]
         logits = self(self._model_inputs(batch))
         loss = F.cross_entropy(logits, labels)
         batch_size = labels.shape[0]
@@ -107,6 +110,7 @@ class ClassificationPL(pl.LightningModule):
         )
 
     def on_validation_epoch_end(self):
+        # current_val_acc: scalar tensor
         current_val_acc = self.val_acc.compute()
         if current_val_acc > self.best_val_acc:
             self.best_val_acc = current_val_acc.item()

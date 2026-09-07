@@ -39,26 +39,26 @@ class PredictionHead(nn.Module):
         """Map input features to unnormalized class logits.
 
         Args:
-            inp: Feature tensor with shape ``[batch_size, input_dim]``.
+            inp: Feature tensor with shape [batch_size, input_dim].
 
         Returns:
-            Logits with shape ``[batch_size, num_classes]``.
+            Logits with shape [batch_size, num_classes].
         """
         if self.act == 'relu':
-            x = F.relu(self.bn1(self.linear1(inp)))
+            x = F.relu(self.bn1(self.linear1(inp)))   # [batch_size, 512]
         elif self.act == 'gelu':
-            x = F.gelu(self.bn1(self.linear1(inp)))
+            x = F.gelu(self.bn1(self.linear1(inp)))   # [batch_size, 512]
         else:
             raise NotImplementedError(f"Activation function {self.act} not implemented")
-        x = self.dp1(x)
+        x = self.dp1(x)                               # [batch_size, 512]
         if self.act == 'relu':
-            x = F.relu(self.bn2(self.linear2(x)))
+            x = F.relu(self.bn2(self.linear2(x)))     # [batch_size, 256]
         elif self.act == 'gelu':
-            x = F.gelu(self.bn2(self.linear2(x)))
+            x = F.gelu(self.bn2(self.linear2(x)))     # [batch_size, 256]
         else:
             raise NotImplementedError(f"Activation function {self.act} not implemented")
-        x = self.dp2(x)
-        x = self.linear3(x)
+        x = self.dp2(x)                               # [batch_size, 256]
+        x = self.linear3(x)                           # [batch_size, num_classes]
         return x  
 
 class _MLP(nn.Module):
@@ -112,12 +112,12 @@ class _MLP(nn.Module):
 
     def forward(self, x):
         if self.linear_or_not:
-            return self.linear(x)
+            return self.linear(x)                     # [*, output_dim]
         else:
-            h = x
+            h = x                                     # [*, input_dim]
             for i in range(self.num_layers - 1):
-                h = self.linears[i](h)
-                h = self.batch_norms[i](h)
+                h = self.linears[i](h)                # [*, hidden_dim]
+                h = self.batch_norms[i](h)            # [*, hidden_dim]
                     
                 if self.act == 'relu':
                     h = F.relu(h)
@@ -125,7 +125,7 @@ class _MLP(nn.Module):
                     h = F.gelu(h)
                 else:
                     raise NotImplementedError(f"Activation function {self.act} not implemented")
-            return self.linears[-1](h)
+            return self.linears[-1](h)                # [*, output_dim]
 
 class BezierEncoderMLP(nn.Module):
     """Encode flattened Bezier control points with a residual MLP."""
@@ -150,8 +150,9 @@ class BezierEncoderMLP(nn.Module):
         self.mlp2 = _MLP(input_dim=out_dim, **options)
 
     def forward(self, x: torch.Tensor):
-        x = self.mlp(x)
-        x = x+self.mlp2(x)
+        # x: [num_primitives_total, input_dim]
+        x = self.mlp(x)                               # [num_primitives_total, out_dim]
+        x = x + self.mlp2(x)                          # [num_primitives_total, out_dim]
         return x
 
     def weights_init(self, m):
@@ -172,9 +173,12 @@ class PositionalEncoding(nn.Module):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
+        # shape: [max_len, d_model]
         pe = torch.zeros(max_len, d_model)
+        # shape: [max_len, 1]
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         
+        # shape: [d_model // 2]
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * 
                              (-math.log(10000.0) / d_model))
         
@@ -182,6 +186,7 @@ class PositionalEncoding(nn.Module):
         odd_dimensions = pe[:, 1::2].shape[1]
         pe[:, 1::2] = torch.cos(position * div_term[:odd_dimensions])
 
+        # shape: [1, max_len, d_model]
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
@@ -189,16 +194,15 @@ class PositionalEncoding(nn.Module):
         """Add positional features to a sequence or batch of sequences.
 
         Args:
-            x: Tensor with shape ``[batch, sequence, d_model]`` or
-                ``[sequence, d_model]``.
+            x: Tensor with shape [batch, sequence, d_model] or [sequence, d_model].
 
         Returns:
-            A tensor with the same shape and dtype as ``x``.
+            A tensor with the same shape and dtype as x.
         """
         if x.dim() == 3:
-            x = x + self.pe[:, :x.size(1), :]
+            x = x + self.pe[:, :x.size(1), :]         # [batch, sequence, d_model]
         elif x.dim() == 2:
-            x = x + self.pe[:, :x.size(0), :]
+            x = x + self.pe[:, :x.size(0), :]         # [sequence, d_model]
         else:
             raise ValueError("Input tensor must have 2 or 3 dimensions")
 
@@ -218,7 +222,6 @@ class TransformerEncoderBlock(nn.Module):
         act="relu",
         norm_first=False,
     ):
-        """Initialize a batch-first transformer encoder stack."""
         super().__init__()
         if input_dim % n_heads != 0:
             raise ValueError("input_dim must be divisible by n_heads")
@@ -234,6 +237,8 @@ class TransformerEncoderBlock(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layers, n_layers)
 
     def forward(self, x, src_key_padding_mask=None, src_mask=None):
+        # x: [batch, seq, input_dim] (batch_first=True)
+        # src_key_padding_mask: [batch, seq] (True = padded)
         return self.encoder(
             x,
             src_key_padding_mask=src_key_padding_mask,

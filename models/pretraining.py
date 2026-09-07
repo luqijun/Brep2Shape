@@ -60,6 +60,7 @@ class UVPointPrediction(nn.Module):
             return_edge_feat=True,
             add_edge_to_graph=args.add_edge_to_graph,
         )
+        # edge_uv_predictor maps [curve_emb_dim] -> [3 * u_samples]
         self.edge_uv_predictor = nn.Sequential(
             nn.Linear(args.curve_emb_dim, args.mlp_hidden_dim),
             nn.Dropout(args.mlp_dropout),
@@ -69,6 +70,7 @@ class UVPointPrediction(nn.Module):
             nn.GELU(),
             nn.Linear(args.mlp_hidden_dim, 3 * args.u_samples),
         )
+        # face_uv_predictor maps [surface_emb_dim + curve_emb_dim] -> [3 * u_samples * v_samples]
         self.face_uv_predictor = nn.Sequential(
             nn.Linear(
                 args.surface_emb_dim + args.curve_emb_dim,
@@ -99,6 +101,9 @@ class UVPointPrediction(nn.Module):
         )
 
     def forward(self, batch) -> dict[str, torch.Tensor]:
+        # encoding.face: [num_faces, surface_emb_dim]
+        # encoding.solid: [batch_size, graph_emb_dim]
+        # encoding.edge: [num_edges, curve_emb_dim]
         encoding = encode_brep(
             batch,
             curve_layer=self.curve_layer,
@@ -110,10 +115,12 @@ class UVPointPrediction(nn.Module):
             raise RuntimeError("Pretraining requires graph-level edge embeddings")
 
         graph = batch["graph"]
+        # src, dst: [num_edges]
         _, dst = graph.edges()
         num_faces = encoding.face.shape[0]
         curve_dim = encoding.edge.shape[-1]
 
+        # face_edge_counts: [num_faces]
         face_edge_counts = torch.zeros(
             num_faces,
             device=encoding.edge.device,
@@ -124,6 +131,7 @@ class UVPointPrediction(nn.Module):
             dst,
             torch.ones_like(dst, dtype=encoding.edge.dtype),
         )
+        # face_edge_sum: [num_faces, curve_dim]
         face_edge_sum = torch.zeros(
             num_faces,
             curve_dim,
@@ -131,9 +139,13 @@ class UVPointPrediction(nn.Module):
             dtype=encoding.edge.dtype,
         )
         face_edge_sum.index_add_(0, dst, encoding.edge)
+        # face_edge_mean: [num_faces, curve_dim]
         face_edge_mean = face_edge_sum / face_edge_counts.clamp_min(1).unsqueeze(-1)
 
+        # face_features: [num_faces, surface_emb_dim + curve_emb_dim]
         face_features = torch.cat([encoding.face, face_edge_mean], dim=-1)
+        # edge_uv_points: [num_edges, 3 * u_samples]
+        # face_uv_points: [num_faces, 3 * u_samples * v_samples]
         return {
             "edge_uv_points": self.edge_uv_predictor(encoding.edge),
             "face_uv_points": self.face_uv_predictor(face_features),
@@ -168,7 +180,9 @@ class PretrainingPL(pl.LightningModule):
         stage: str,
     ) -> torch.Tensor:
         outputs = self.model(batch)
+        # edge_predictions: [num_edges, u_samples, 3]
         edge_predictions = outputs["edge_uv_points"].view(-1, self.u_samples, 3)
+        # face_predictions: [num_faces, u_samples, v_samples, 3]
         face_predictions = outputs["face_uv_points"].view(
             -1,
             self.u_samples,
@@ -176,13 +190,15 @@ class PretrainingPL(pl.LightningModule):
             3,
         )
         graph = batch["graph"]
+        # edge_loss: scalar
         edge_loss = self.mse_loss(
             edge_predictions,
-            graph.edata["uv_edge_points"],
+            graph.edata["uv_edge_points"],            # [num_edges, u_samples, 3]
         )
+        # face_loss: scalar
         face_loss = self.mse_loss(
             face_predictions,
-            graph.ndata["uv_face_points"],
+            graph.ndata["uv_face_points"],            # [num_faces, u_samples, v_samples, 3]
         )
         loss = edge_loss + face_loss
         batch_size = graph.batch_size

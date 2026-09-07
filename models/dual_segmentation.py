@@ -93,6 +93,8 @@ class DualSegmentation(nn.Module):
         )
 
     def forward(self, batch):
+        # encoding.face: [num_faces, graph_emb_dim]
+        # encoding.solid: [batch_size, graph_emb_dim]
         encoding = encode_brep(
             batch,
             curve_layer=self.curve_layer,
@@ -101,7 +103,9 @@ class DualSegmentation(nn.Module):
             use_checkpoint=self.use_checkpoint,
         )
         graph = batch["graph"]
+        # num_faces: [batch_size]
         num_faces = graph.batch_num_nodes().to(encoding.solid.device)
+        # solid_per_face: [num_faces_total, graph_emb_dim]
         solid_per_face = encoding.solid.repeat_interleave(num_faces, dim=0)
+        # logits: [num_faces_total, num_classes]
         return self.head(torch.cat((encoding.face, solid_per_face), dim=1))
-

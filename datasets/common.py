@@ -20,7 +20,15 @@ def get_dataset_logger(log_dir: str | pathlib.Path | None = None) -> logging.Log
 
 
 def pad_or_sample(list_of_lists, max_len, *, dtype=torch.long, seed=None):
+    """Pad or randomly subsample lists to a fixed length.
+
+    Returns:
+        padded: [num_lists, max_len]
+        lengths: [num_lists]
+    """
+    # padded: [num_lists, max_len]
     padded = torch.zeros((len(list_of_lists), max_len), dtype=dtype)
+    # lengths: [num_lists]
     lengths = torch.empty(len(list_of_lists), dtype=torch.long)
     generator = torch.Generator()
     if seed is not None:
@@ -43,6 +51,7 @@ def pad_or_sample(list_of_lists, max_len, *, dtype=torch.long, seed=None):
 
 
 def convert_feature_tensors_to_float32(data, tensor_keys):
+    """Convert selected tensor values in a dict to float32."""
     converted = {}
     for key, value in data.items():
         if key in tensor_keys:

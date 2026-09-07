@@ -9,9 +9,11 @@ from torch.utils.checkpoint import checkpoint
 @dataclass(frozen=True)
 class EncoderOutput:
     """Face-, solid-, and optional edge-level encoder representations."""
-
+    # shape: [num_faces, face_emb_dim]
     face: torch.Tensor
+    # shape: [batch_size, graph_emb_dim]
     solid: torch.Tensor
+    # shape: [num_edges, edge_emb_dim] | None
     edge: torch.Tensor | None = None
 
 
@@ -31,23 +33,31 @@ def encode_brep(
 ) -> EncoderOutput:
     """Run the shared curve, surface, and graph encoding pipeline."""
     try:
-        graph = batch["graph"]
-        line_graph = batch["line_graph"]
+        graph = batch["graph"]                    # DGLGraph, batched solids
+        line_graph = batch["line_graph"]          # DGLGraph, line graph of batched solids
+        # shape: [num_edges, num_primitives, num_points, 4*11]
         edge = graph.edata["edge"]
+        # shape: [num_edges, num_primitives]
         edge_padding_mask = graph.edata["edge_padding_mask"]
+        # shape: [num_faces, num_primitives, num_points, 28*4+1+7]
         face = graph.ndata["face"]
+        # shape: [num_faces, num_primitives, 7]
         tri_normal = graph.ndata["tri_normal"]
+        # shape: [num_faces, num_primitives]
         face_vis_mask = graph.ndata["face_vis_mask"]
+        # shape: [num_faces, num_primitives]
         face_padding_mask = graph.ndata["face_padding_mask"]
     except KeyError as exc:
         raise KeyError(f"Model batch is missing required feature {exc.args[0]!r}") from exc
 
+    # shape: [num_edges, curve_emb_dim]
     edge_embedding = _run_module(
         curve_layer,
         edge,
         edge_padding_mask,
         use_checkpoint=use_checkpoint,
     )
+    # shape: [num_faces, surface_emb_dim]
     face_embedding = _run_module(
         surface_layer,
         face,
@@ -56,6 +66,8 @@ def encode_brep(
         face_padding_mask,
         use_checkpoint=use_checkpoint,
     )
+    # graph_outputs: (face_output, solid_output) or (face_output, solid_output, edge_output)
+    # face_output: [num_faces, graph_emb_dim], solid_output: [batch_size, graph_emb_dim]
     graph_outputs = _run_module(
         graph_layer,
         graph,
