@@ -151,3 +151,6 @@ scripts/*.local.sh
 
 # Editor / assistant local settings
 .claude/
+preprocess
+data/
+step_preprocess_*.py
