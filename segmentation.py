@@ -8,20 +8,68 @@ def build_parser():
     parser.add_argument("--method", choices=("dual",), default="dual", help="Model method")
     parser.add_argument("--experiment_name", type=str, default="segmentation", help="Experiment name")
     parser.add_argument("--desc", type=str, default=None, help="Optional run description")
-    parser.add_argument("--dataset_dir", type=str, required=True, help="Directory containing datasplit_new.json")
+    parser.add_argument(
+        "--dataset_dir",
+        type=str,
+        required=True,
+        help="Directory containing datasplit_new.json",
+    )
     parser.add_argument("--num_classes", type=int, required=True, help="Number of classes")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--num_workers", type=int, default=0, help="Number of dataloader workers")
     parser.add_argument("--max_epochs", type=int, default=350, help="Number of epochs")
-    parser.add_argument("--precision", choices=("medium", "high", "highest"), default="medium", help="PyTorch matmul precision")
-    parser.add_argument("--gpus", type=str, default="-1", help="GPU devices for Lightning, use -1 for all GPUs")
-    parser.add_argument("--accelerator", type=str, default="ddp", choices=("ddp", "gpu", "None", "fsdp"), help="Training accelerator")
-    parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file or directory for testing")
-    parser.add_argument("--pretrain_checkpoint", type=str, default=None, help="Pretrained checkpoint for finetuning")
-    parser.add_argument("--continue_training", type=str, default=None, help="Checkpoint for continuing model weights")
-    parser.add_argument("--scheduler", type=str, default="cosine", choices=("cosine", "step", "fix", "cosine_warmup"), help="Scheduler")
-    parser.add_argument("--optimizer", type=str, default="adam", choices=("adam", "adamw", "sgd"), help="Optimizer")
+    parser.add_argument(
+        "--precision",
+        choices=("medium", "high", "highest"),
+        default="medium",
+        help="PyTorch matmul precision",
+    )
+    parser.add_argument(
+        "--gpus",
+        type=str,
+        default="-1",
+        help="GPU devices for Lightning, use -1 for all GPUs",
+    )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="ddp",
+        choices=("ddp", "gpu", "None", "fsdp"),
+        help="Training accelerator",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Checkpoint file or directory for testing",
+    )
+    parser.add_argument(
+        "--pretrain_checkpoint",
+        type=str,
+        default=None,
+        help="Pretrained checkpoint for finetuning",
+    )
+    parser.add_argument(
+        "--continue_training",
+        type=str,
+        default=None,
+        help="Checkpoint for continuing model weights",
+    )
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="cosine",
+        choices=("cosine", "step", "fix", "cosine_warmup"),
+        help="Scheduler",
+    )
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="adam",
+        choices=("adam", "adamw", "sgd"),
+        help="Optimizer",
+    )
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--betas", type=float, nargs=2, default=(0.9, 0.95), help="Adam/AdamW betas")
@@ -61,9 +109,24 @@ def build_parser():
 
 def _checkpoint_specs():
     return [
-        {"monitor": "val/val_loss", "filename": "best_loss", "save_last": True, "mode": "min"},
-        {"monitor": "val/val_iou", "filename": "best_iou", "save_last": True, "mode": "max"},
-        {"monitor": "val/val_acc", "filename": "best_acc", "save_last": True, "mode": "max"},
+        {
+            "monitor": "val/val_loss",
+            "filename": "best_loss",
+            "save_last": True,
+            "mode": "min",
+        },
+        {
+            "monitor": "val/val_iou",
+            "filename": "best_iou",
+            "save_last": True,
+            "mode": "max",
+        },
+        {
+            "monitor": "val/val_acc",
+            "filename": "best_acc",
+            "save_last": True,
+            "mode": "max",
+        },
         {"filename": "epoch_{epoch:04d}", "every_n_epochs": 25, "save_top_k": -1},
     ]
 
@@ -112,6 +175,7 @@ def main():
     args = build_parser().parse_args()
     import torch
     from lightning.pytorch import seed_everything
+
     from utils.training import (
         build_trainer,
         create_run_paths,
@@ -151,8 +215,12 @@ def main():
         best_acc = model.best_val_acc.item() if torch.is_tensor(model.best_val_acc) else model.best_val_acc
         best_acc_iou = model.best_acc_iou.item() if torch.is_tensor(model.best_acc_iou) else model.best_acc_iou
         print("\n=== Best metrics by epoch ===")
-        print(f"| best_iou_epoch: {model.best_iou_epoch} | best_iou: {best_iou * 100:.2f} | best_iou_acc: {best_iou_acc * 100:.2f} |")
-        print(f"| best_acc_epoch: {model.best_acc_epoch} | best_acc: {best_acc * 100:.2f} | best_acc_iou: {best_acc_iou * 100:.2f} |")
+        print(
+            f"| best_iou_epoch: {model.best_iou_epoch} | best_iou: {best_iou * 100:.2f} | best_iou_acc: {best_iou_acc * 100:.2f} |"
+        )
+        print(
+            f"| best_acc_epoch: {model.best_acc_epoch} | best_acc: {best_acc * 100:.2f} | best_acc_iou: {best_acc_iou * 100:.2f} |"
+        )
         return
 
     test_loader = _build_dataset(args, "test").get_dataloader(
@@ -167,10 +235,12 @@ def main():
 
         model = SegmentationPL.load_from_checkpoint(str(checkpoint))
         results = trainer.test(model=model, dataloaders=[test_loader], verbose=True)
-        results_list.append({
-            "checkpoint": str(checkpoint),
-            "test/test_iou": results[0]["test/test_iou"] * 100.0,
-        })
+        results_list.append(
+            {
+                "checkpoint": str(checkpoint),
+                "test/test_iou": results[0]["test/test_iou"] * 100.0,
+            }
+        )
     print(_format_results(args.checkpoint, results_list))
 
 

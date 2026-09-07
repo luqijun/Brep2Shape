@@ -18,7 +18,6 @@ from datasets.common import (
     sample_identifier,
 )
 
-
 VALID_SPLITS = {"train", "val", "test"}
 REQUIRED_ITEM_KEYS = {"face", "topo", "graph", "line_graph"}
 MAX_FACE_PRIMITIVES = 100
@@ -64,13 +63,9 @@ class PretrainingDataset(Dataset):
         self.random_rotate = random_rotate
 
         if center_and_scale:
-            self.logger.warning(
-                "center_and_scale is deprecated: pretraining samples are always normalized"
-            )
+            self.logger.warning("center_and_scale is deprecated: pretraining samples are always normalized")
         if random_rotate:
-            self.logger.warning(
-                "random_rotate is not implemented for PretrainingDataset and will be ignored"
-            )
+            self.logger.warning("random_rotate is not implemented for PretrainingDataset and will be ignored")
 
         self.file_list = self._load_split(split)
 
@@ -102,9 +97,7 @@ class PretrainingDataset(Dataset):
                 raise TypeError(f"Item {index} in split {split!r} must be a JSON object")
             missing = REQUIRED_ITEM_KEYS.difference(raw_item)
             if missing:
-                raise KeyError(
-                    f"Item {index} in split {split!r} is missing keys: {sorted(missing)}"
-                )
+                raise KeyError(f"Item {index} in split {split!r} is missing keys: {sorted(missing)}")
             item = dict(raw_item)
             for key in REQUIRED_ITEM_KEYS:
                 path = pathlib.Path(item[key])
@@ -155,14 +148,10 @@ class PretrainingDataset(Dataset):
         current_time = time.strftime("%Y%m%d%H%M%S")
         if self.data:
             self.logger.debug("Loaded sample keys: %s", sorted(self.data[0]))
-            self.logger.info(
-                "Successfully loaded %d samples at %s", len(self.data), current_time
-            )
+            self.logger.info("Successfully loaded %d samples at %s", len(self.data), current_time)
 
         if invalid_samples:
-            self.logger.warning(
-                "%d samples failed to load at %s", len(invalid_samples), current_time
-            )
+            self.logger.warning("%d samples failed to load at %s", len(invalid_samples), current_time)
             if self.log_dir is not None:
                 error_file = self.log_dir / f"invalid_samples_{current_time}.json"
                 self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -258,9 +247,7 @@ class PretrainingDataset(Dataset):
                     # nodes_padded: [max_facet_len, num_points, channels]
                     nodes_padded = nodes.new_zeros((max_facet_len, *nodes.shape[1:]))
                     # tri_normal_padded: [max_facet_len, 7]
-                    tri_normal_padded = tri_normal.new_zeros(
-                        (max_facet_len, *tri_normal.shape[1:])
-                    )
+                    tri_normal_padded = tri_normal.new_zeros((max_facet_len, *tri_normal.shape[1:]))
                     # in_mask_padded: [max_facet_len]
                     in_mask_padded = in_mask.new_zeros(max_facet_len)
                     nodes_padded[:num_nodes] = nodes
@@ -269,12 +256,8 @@ class PretrainingDataset(Dataset):
                 else:
                     repeats = (max_facet_len + num_nodes - 1) // num_nodes
                     nodes_padded = torch.cat([nodes] * repeats, dim=0)[:max_facet_len]
-                    tri_normal_padded = torch.cat([tri_normal] * repeats, dim=0)[
-                        :max_facet_len
-                    ]
-                    in_mask_padded = torch.cat([in_mask] * repeats, dim=0)[
-                        :max_facet_len
-                    ]
+                    tri_normal_padded = torch.cat([tri_normal] * repeats, dim=0)[:max_facet_len]
+                    in_mask_padded = torch.cat([in_mask] * repeats, dim=0)[:max_facet_len]
 
             # padding_mask: [max_facet_len], True = valid, False = padded
             padding_mask = torch.zeros(max_facet_len, dtype=torch.bool)
@@ -326,10 +309,7 @@ class PretrainingDataset(Dataset):
         # points: [num_faces, num_points, 3]
         points = torch.as_tensor(data["points"])
         if points.ndim != 3 or points.shape[-1] != 3:
-            raise ValueError(
-                "points must have shape [num_faces, num_points, 3], "
-                f"got {points.shape}"
-            )
+            raise ValueError(f"points must have shape [num_faces, num_points, 3], got {points.shape}")
         if not torch.isfinite(points).all():
             raise ValueError("points contains NaN or infinite values")
 
@@ -365,9 +345,7 @@ class PretrainingDataset(Dataset):
                 sample, error = self._process_single_item(item)
                 if sample is not None and error == "success":
                     return sample
-                self.logger.warning(
-                    "Failed to load sample %s: %s", sample_identifier(item), error
-                )
+                self.logger.warning("Failed to load sample %s: %s", sample_identifier(item), error)
             raise RuntimeError("No valid samples could be loaded from the dataset split")
         return self.data[index]
 
@@ -396,17 +374,11 @@ class PretrainingDataset(Dataset):
         graph_file_paths = [sample["graph_file_path"] for sample in batch]
 
         # face_counts: [batch_size]
-        face_counts = torch.tensor(
-            [sample["face"].shape[0] for sample in batch], dtype=torch.long
-        )
+        face_counts = torch.tensor([sample["face"].shape[0] for sample in batch], dtype=torch.long)
         # edge_counts: [batch_size]
-        edge_counts = torch.tensor(
-            [sample["edge"].shape[0] for sample in batch], dtype=torch.long
-        )
+        edge_counts = torch.tensor([sample["edge"].shape[0] for sample in batch], dtype=torch.long)
         # wire_counts: [batch_size]
-        wire_counts = torch.tensor(
-            [sample["edge_index"].shape[0] for sample in batch], dtype=torch.long
-        )
+        wire_counts = torch.tensor([sample["edge_index"].shape[0] for sample in batch], dtype=torch.long)
         # offsets: [batch_size]
         face_offsets = torch.cumsum(face_counts, dim=0) - face_counts
         edge_offsets = torch.cumsum(edge_counts, dim=0) - edge_counts
@@ -415,9 +387,7 @@ class PretrainingDataset(Dataset):
         adj_face_indices = []
         edge_indices = []
         wire_indices = []
-        for sample, face_offset, edge_offset, wire_offset in zip(
-            batch, face_offsets, edge_offsets, wire_offsets
-        ):
+        for sample, face_offset, edge_offset, wire_offset in zip(batch, face_offsets, edge_offsets, wire_offsets):
             # adj_face_index: [num_faces, MAX_ADJACENT_FACES]
             adj_face_indices.append(
                 self._offset_padded_indices(
@@ -458,14 +428,10 @@ class PretrainingDataset(Dataset):
         edge_feature_keys = ("edge", "edge_padding_mask", "uv_edge_points")
         for key in node_feature_keys:
             # batched_graph.ndata[key]: [sum(face_counts), ...]
-            batched_graph.ndata[key] = torch.cat(
-                [sample[key] for sample in batch], dim=0
-            )
+            batched_graph.ndata[key] = torch.cat([sample[key] for sample in batch], dim=0)
         for key in edge_feature_keys:
             # batched_graph.edata[key]: [sum(edge_counts), ...]
-            batched_graph.edata[key] = torch.cat(
-                [sample[key] for sample in batch], dim=0
-            )
+            batched_graph.edata[key] = torch.cat([sample[key] for sample in batch], dim=0)
 
         return {
             "graph": batched_graph,
@@ -475,21 +441,15 @@ class PretrainingDataset(Dataset):
             # adj_face_index: [sum(num_faces), MAX_ADJACENT_FACES]
             "adj_face_index": torch.cat(adj_face_indices, dim=0),
             # adj_face_index_length: [sum(num_faces)]
-            "adj_face_index_length": torch.cat(
-                [sample["adj_face_index_length"] for sample in batch], dim=0
-            ),
+            "adj_face_index_length": torch.cat([sample["adj_face_index_length"] for sample in batch], dim=0),
             # edge_index: [sum(num_wires), MAX_EDGES_PER_WIRE]
             "edge_index": torch.cat(edge_indices, dim=0),
             # edge_index_length: [sum(num_wires)]
-            "edge_index_length": torch.cat(
-                [sample["edge_index_length"] for sample in batch], dim=0
-            ),
+            "edge_index_length": torch.cat([sample["edge_index_length"] for sample in batch], dim=0),
             # wire_index: [sum(num_faces), MAX_WIRES_PER_FACE]
             "wire_index": torch.cat(wire_indices, dim=0),
             # wire_index_length: [sum(num_faces)]
-            "wire_index_length": torch.cat(
-                [sample["wire_index_length"] for sample in batch], dim=0
-            ),
+            "wire_index_length": torch.cat([sample["wire_index_length"] for sample in batch], dim=0),
         }
 
     def get_dataloader(
@@ -527,12 +487,7 @@ class PretrainingDataset(Dataset):
     @staticmethod
     def _more_uv_grid_path(file_path: str, suffix: str) -> pathlib.Path:
         source = pathlib.Path(file_path)
-        return (
-            source.parent.parent
-            / "more_uvgrid"
-            / source.name
-            / f"{source.stem}{suffix}"
-        )
+        return source.parent.parent / "more_uvgrid" / source.name / f"{source.stem}{suffix}"
 
     def load_one_sample(self, item):
         """Load and validate one preprocessed B-rep sample."""
@@ -599,10 +554,7 @@ class PretrainingDataset(Dataset):
         else:
             uv_file = self._more_uv_grid_path(file_path, "_uvgrid.bin")
             uv_data = torch.load(uv_file, map_location="cpu", weights_only=False)
-            key = (
-                f"uv_face_points_{self.num_uv_samples + 2}_"
-                f"{self.num_uv_samples + 2}"
-            )
+            key = f"uv_face_points_{self.num_uv_samples + 2}_{self.num_uv_samples + 2}"
             if key not in uv_data:
                 raise KeyError(f"UV file {uv_file} is missing {key}")
             # uv_face_points: [num_faces, num_uv_samples+2, num_uv_samples+2, 3]
@@ -627,9 +579,7 @@ class PretrainingDataset(Dataset):
         required_keys = {"edge", "edge_index", "wire_index", "adj_face_index"}
         missing = required_keys.difference(solid)
         if missing:
-            raise KeyError(
-                f"Topology file {file_path} is missing keys: {sorted(missing)}"
-            )
+            raise KeyError(f"Topology file {file_path} is missing keys: {sorted(missing)}")
 
         # adj_face_index: [num_faces, MAX_ADJACENT_FACES]
         # adj_face_index_length: [num_faces]
@@ -638,14 +588,10 @@ class PretrainingDataset(Dataset):
         )
         # wire_index: [num_faces, MAX_WIRES_PER_FACE]
         # wire_index_length: [num_faces]
-        wire_index_tensor, wire_index_length = pad_or_sample(
-            solid["wire_index"], MAX_WIRES_PER_FACE, dtype=torch.long
-        )
+        wire_index_tensor, wire_index_length = pad_or_sample(solid["wire_index"], MAX_WIRES_PER_FACE, dtype=torch.long)
         # edge_index: [num_wires, MAX_EDGES_PER_WIRE]
         # edge_index_length: [num_wires]
-        edge_index_tensor, edge_index_length = pad_or_sample(
-            solid["edge_index"], MAX_EDGES_PER_WIRE, dtype=torch.long
-        )
+        edge_index_tensor, edge_index_length = pad_or_sample(solid["edge_index"], MAX_EDGES_PER_WIRE, dtype=torch.long)
 
         if self.num_uv_samples == 3:
             if "uv_edge_points" not in solid:

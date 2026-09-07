@@ -1,0 +1,37 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python.terminal.useEnvFile": true,
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "never",
+            "source.organizeImports": "never",
+            "source.unusedImports": "never",
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit",
+        },
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+    "notebook.formatOnSave.enabled": true,
+    "notebook.codeActionsOnSave": {
+        "notebook.source.fixAll.ruff": "explicit",
+        "notebook.source.organizeImports.ruff": "explicit"
+    },
+    "editor.rulers": [
+        120
+    ],
+    // ruff配置
+    "ruff.enable": true,
+    "ruff.lineLength": 120,
+    "ruff.organizeImports": true,
+    "ruff.importStrategy": "fromEnvironment",
+    // 忽略UP006和UP035, 会自动将大写的泛型类型（如 List、Dict）转换为小写的内置类型（如 list、dict）
+    "ruff.lint.ignore": [
+        "UP006",
+        "UP035"
+    ],
+    "ruff.interpreter": [
+        "/home/numbat/miniconda3/envs/py311/bin/python"
+    ]
+}

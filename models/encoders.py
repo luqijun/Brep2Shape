@@ -1,14 +1,16 @@
 """Primitive encoders shared by the Brep2Shape task models."""
+
 import math
+
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class PredictionHead(nn.Module):
     """Three-layer prediction head for classification or segmentation logits."""
 
-    def __init__(self, input_dim, num_classes, dropout=0.3, act='relu', use_layer_norm=True):
+    def __init__(self, input_dim, num_classes, dropout=0.3, act="relu", use_layer_norm=True):
         """Initialize the prediction head.
 
         Args:
@@ -44,22 +46,23 @@ class PredictionHead(nn.Module):
         Returns:
             Logits with shape [batch_size, num_classes].
         """
-        if self.act == 'relu':
-            x = F.relu(self.bn1(self.linear1(inp)))   # [batch_size, 512]
-        elif self.act == 'gelu':
-            x = F.gelu(self.bn1(self.linear1(inp)))   # [batch_size, 512]
+        if self.act == "relu":
+            x = F.relu(self.bn1(self.linear1(inp)))  # [batch_size, 512]
+        elif self.act == "gelu":
+            x = F.gelu(self.bn1(self.linear1(inp)))  # [batch_size, 512]
         else:
             raise NotImplementedError(f"Activation function {self.act} not implemented")
-        x = self.dp1(x)                               # [batch_size, 512]
-        if self.act == 'relu':
-            x = F.relu(self.bn2(self.linear2(x)))     # [batch_size, 256]
-        elif self.act == 'gelu':
-            x = F.gelu(self.bn2(self.linear2(x)))     # [batch_size, 256]
+        x = self.dp1(x)  # [batch_size, 512]
+        if self.act == "relu":
+            x = F.relu(self.bn2(self.linear2(x)))  # [batch_size, 256]
+        elif self.act == "gelu":
+            x = F.gelu(self.bn2(self.linear2(x)))  # [batch_size, 256]
         else:
             raise NotImplementedError(f"Activation function {self.act} not implemented")
-        x = self.dp2(x)                               # [batch_size, 256]
-        x = self.linear3(x)                           # [batch_size, num_classes]
-        return x  
+        x = self.dp2(x)  # [batch_size, 256]
+        x = self.linear3(x)  # [batch_size, num_classes]
+        return x
+
 
 class _MLP(nn.Module):
     """Configurable multilayer perceptron with a linear output layer."""
@@ -84,7 +87,7 @@ class _MLP(nn.Module):
         Raises:
             ValueError: If ``num_layers`` is less than one.
         """
-        super(_MLP, self).__init__()
+        super().__init__()
         self.linear_or_not = True
         self.num_layers = num_layers
         self.output_dim = output_dim
@@ -112,20 +115,21 @@ class _MLP(nn.Module):
 
     def forward(self, x):
         if self.linear_or_not:
-            return self.linear(x)                     # [*, output_dim]
+            return self.linear(x)  # [*, output_dim]
         else:
-            h = x                                     # [*, input_dim]
+            h = x  # [*, input_dim]
             for i in range(self.num_layers - 1):
-                h = self.linears[i](h)                # [*, hidden_dim]
-                h = self.batch_norms[i](h)            # [*, hidden_dim]
-                    
-                if self.act == 'relu':
+                h = self.linears[i](h)  # [*, hidden_dim]
+                h = self.batch_norms[i](h)  # [*, hidden_dim]
+
+                if self.act == "relu":
                     h = F.relu(h)
-                elif self.act == 'gelu':
+                elif self.act == "gelu":
                     h = F.gelu(h)
                 else:
                     raise NotImplementedError(f"Activation function {self.act} not implemented")
-            return self.linears[-1](h)                # [*, output_dim]
+            return self.linears[-1](h)  # [*, output_dim]
+
 
 class BezierEncoderMLP(nn.Module):
     """Encode flattened Bezier control points with a residual MLP."""
@@ -151,8 +155,8 @@ class BezierEncoderMLP(nn.Module):
 
     def forward(self, x: torch.Tensor):
         # x: [num_primitives_total, input_dim]
-        x = self.mlp(x)                               # [num_primitives_total, out_dim]
-        x = x + self.mlp2(x)                          # [num_primitives_total, out_dim]
+        x = self.mlp(x)  # [num_primitives_total, out_dim]
+        x = x + self.mlp2(x)  # [num_primitives_total, out_dim]
         return x
 
     def weights_init(self, m):
@@ -160,6 +164,7 @@ class BezierEncoderMLP(nn.Module):
             torch.nn.init.kaiming_uniform_(m.weight.data)
             if m.bias is not None:
                 m.bias.data.fill_(0.0)
+
 
 class PositionalEncoding(nn.Module):
     """Add fixed sinusoidal position features to primitive sequences.
@@ -169,26 +174,26 @@ class PositionalEncoding(nn.Module):
         max_len: Maximum supported sequence length.
         dropout: Dropout probability after adding position features.
     """
+
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 8000):
-        super(PositionalEncoding, self).__init__()
+        super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
         # shape: [max_len, d_model]
         pe = torch.zeros(max_len, d_model)
         # shape: [max_len, 1]
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        
+
         # shape: [d_model // 2]
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * 
-                             (-math.log(10000.0) / d_model))
-        
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+
         pe[:, 0::2] = torch.sin(position * div_term)
         odd_dimensions = pe[:, 1::2].shape[1]
         pe[:, 1::2] = torch.cos(position * div_term[:odd_dimensions])
 
         # shape: [1, max_len, d_model]
         pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
+        self.register_buffer("pe", pe)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Add positional features to a sequence or batch of sequences.
@@ -200,13 +205,14 @@ class PositionalEncoding(nn.Module):
             A tensor with the same shape and dtype as x.
         """
         if x.dim() == 3:
-            x = x + self.pe[:, :x.size(1), :]         # [batch, sequence, d_model]
+            x = x + self.pe[:, : x.size(1), :]  # [batch, sequence, d_model]
         elif x.dim() == 2:
-            x = x + self.pe[:, :x.size(0), :]         # [sequence, d_model]
+            x = x + self.pe[:, : x.size(0), :]  # [sequence, d_model]
         else:
             raise ValueError("Input tensor must have 2 or 3 dimensions")
 
         return self.dropout(x)
+
 
 class TransformerEncoderBlock(nn.Module):
     """Thin wrapper around a stack of PyTorch transformer encoder layers."""

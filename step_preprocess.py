@@ -15,24 +15,24 @@ Usage:
   python step_preprocess.py --input_dir DIR [--input_dir DIR2 ...] \
       --output_dir OUT [--workers N] [--max_faces 256] [--num_samples 64] [--timeout 300]
 """
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import logging
 import os
 import pathlib
 import re
 import time
 import zlib
-from concurrent.futures import ProcessPoolExecutor, TimeoutError as FutureTimeoutError
-
-import numpy as np
-import torch
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 import dgl
-import logging
-
+import numpy as np
+import torch
 from OCC.Core.BRep import BRep_Tool
 from OCC.Core.TopAbs import TopAbs_EDGE
 from OCC.Core.TopExp import topexp_MapShapes
@@ -101,8 +101,8 @@ def process_solid(compound, solid, max_faces: int, num_samples: int, rng) -> dic
     # --- 环扫描 + 去重边（顺序与 preprocess.topology 一致）-------------------
     edge_map = TopTools_IndexedMapOfShape()
     topexp_MapShapes(solid.topods_shape(), TopAbs_EDGE, edge_map)
-    face_wires: list[list[list]] = []      # 每面：每环的有序边对象列表
-    edge_objects: list = []                # 去重后的实体边（首次出现序）
+    face_wires: list[list[list]] = []  # 每面：每环的有序边对象列表
+    edge_objects: list = []  # 去重后的实体边（首次出现序）
     compound2global: dict[int, int] = {}
     for face in faces:
         wire_lists = []
@@ -126,11 +126,7 @@ def process_solid(compound, solid, max_faces: int, num_samples: int, rng) -> dic
             cps = edge_bezier_control_points(edge)
         except Exception:
             continue
-        adj = [
-            new
-            for f in solid.faces_from_edge(edge)
-            if (new := old2new_face.get(mapper.face_index(f))) is not None
-        ]
+        adj = [new for f in solid.faces_from_edge(edge) if (new := old2new_face.get(mapper.face_index(f))) is not None]
         adj = list(dict.fromkeys(adj))
         if not adj:
             continue
@@ -148,9 +144,7 @@ def process_solid(compound, solid, max_faces: int, num_samples: int, rng) -> dic
         "nodes": [patch_list[i].nodes for i in kept_face_idx],
         "in_mask": [patch_list[i].trimmed_mask for i in kept_face_idx],
         "tri_normals": [patch_list[i].patch_features for i in kept_face_idx],
-        "points": np.stack(
-            [_sanitize_points(patch_list[i].points, faces[i]) for i in kept_face_idx]
-        ),
+        "points": np.stack([_sanitize_points(patch_list[i].points, faces[i]) for i in kept_face_idx]),
         "uv_face_points": np.stack([_face_uv_grid(faces[i]) for i in kept_face_idx]),
     }
 
@@ -180,9 +174,7 @@ def process_solid(compound, solid, max_faces: int, num_samples: int, rng) -> dic
 
     # --- DGL 图：节点=面，边=B-rep 边（连接其邻接面）---------------------------
     src = torch.tensor([adj[0] for adj in edge_adj], dtype=torch.int64)
-    dst = torch.tensor(
-        [adj[1] if len(adj) > 1 else adj[0] for adj in edge_adj], dtype=torch.int64
-    )
+    dst = torch.tensor([adj[1] if len(adj) > 1 else adj[0] for adj in edge_adj], dtype=torch.int64)
     graph = dgl.graph((src, dst), num_nodes=num_faces)
 
     # --- DGL 对偶图：节点=B-rep 边，边=同面共边对 -----------------------------
@@ -269,7 +261,7 @@ def process_step_file(args):
     line_graph_path = out / "line_graphs" / f"{name}.bin"
     if face_path.exists() and topo_path.exists() and graph_path.exists() and line_graph_path.exists():
         print(f"[skip] {path}: already processed", flush=True)
-        return (path, [name], None)   # 当作成功处理，但实际未处理，manifest 会保留该样本
+        return (path, [name], None)  # 当作成功处理，但实际未处理，manifest 会保留该样本
     # -----------------------------------------
 
     start = time.monotonic()
@@ -345,9 +337,7 @@ def preprocess_files(files, out_dir, workers=8, max_faces=256, num_samples=64, t
     while pending:
         inflight = pending[:window]
         pending = pending[window:]
-        pool = ProcessPoolExecutor(
-            max_workers=workers, max_tasks_per_child=64, initializer=_limit_threads
-        )
+        pool = ProcessPoolExecutor(max_workers=workers, max_tasks_per_child=64, initializer=_limit_threads)
         futures = [(job, pool.submit(process_step_file, job)) for job in inflight]
         killed = False
         for i, (job, future) in enumerate(futures):
@@ -358,7 +348,7 @@ def preprocess_files(files, out_dir, workers=8, max_faces=256, num_samples=64, t
                 skipped.append({"file": str(path), "error": f"timeout after {timeout} seconds"})
                 print(f"[timeout] {path}: exceeded {timeout}s, killing worker pool", flush=True)
                 # 本窗口内尚未取到结果的任务重新入队（已完成者由 skip 检查秒过）
-                pending = [j for j, _ in futures[i + 1:]] + pending
+                pending = [j for j, _ in futures[i + 1 :]] + pending
                 _kill_pool(pool)
                 killed = True
                 break
@@ -399,8 +389,7 @@ def write_datasplit(out_dir, manifest, val_ratio=0.05, seed=0, splits=("train", 
             "line_graph": f"line_graphs/{name}.bin",
         }
 
-    split = {"train": [item(n) for n in train], "val": [item(n) for n in val],
-             "test": [item(n) for n in val]}
+    split = {"train": [item(n) for n in train], "val": [item(n) for n in val], "test": [item(n) for n in val]}
     with open(pathlib.Path(out_dir) / "datasplit.json", "w", encoding="utf-8") as f:
         json.dump(split, f, indent=1)
     return split
@@ -416,18 +405,15 @@ def write_meta(out_dir, manifest, skipped):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input_dir", action="append", required=True,
-                        help="STEP 文件或目录（可重复，递归遍历）")
+    parser.add_argument("--input_dir", action="append", required=True, help="STEP 文件或目录（可重复，递归遍历）")
     parser.add_argument("--output_dir", required=True)
     parser.add_argument("--workers", type=int, default=min(16, os.cpu_count() or 4))
     parser.add_argument("--max_faces", type=int, default=256)
-    parser.add_argument("--num_samples", type=int, default=64,
-                        help="每面采样点数（用于归一化，BRT 默认 256）")
+    parser.add_argument("--num_samples", type=int, default=64, help="每面采样点数（用于归一化，BRT 默认 256）")
     parser.add_argument("--val_ratio", type=float, default=0.05)
-    parser.add_argument("--timeout", type=float, default=300.0,
-                        help="每个文件的处理超时时间（秒），<=0 表示不设超时")
+    parser.add_argument("--timeout", type=float, default=300.0, help="每个文件的处理超时时间（秒），<=0 表示不设超时")
     args = parser.parse_args()
-    
+
     log_level = os.environ.get("LOG_LEVEL", "INFO")
     logging.basicConfig(level=log_level, format="%(levelname)s %(name)s: %(message)s")
     logging.captureWarnings(True)
@@ -441,15 +427,17 @@ def main():
         return
 
     manifest, skipped = preprocess_files(
-        files, args.output_dir, workers=args.workers,
-        max_faces=args.max_faces, num_samples=args.num_samples,
+        files,
+        args.output_dir,
+        workers=args.workers,
+        max_faces=args.max_faces,
+        num_samples=args.num_samples,
         timeout=args.timeout,
     )
     write_datasplit(args.output_dir, manifest, val_ratio=args.val_ratio)
     write_meta(args.output_dir, manifest, skipped)
     print(
-        f"Done: {len(manifest)} samples, {len(skipped)} skipped -> "
-        f"{pathlib.Path(args.output_dir) / 'datasplit.json'}",
+        f"Done: {len(manifest)} samples, {len(skipped)} skipped -> {pathlib.Path(args.output_dir) / 'datasplit.json'}",
         flush=True,
     )
 

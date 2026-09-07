@@ -18,7 +18,6 @@ from datasets.common import (
     sample_identifier,
 )
 
-
 VALID_SPLITS = {"train", "val", "test"}
 REQUIRED_ITEM_KEYS = {"face", "topo", "graph", "line_graph", "label"}
 PATH_ITEM_KEYS = {"face", "topo", "graph", "line_graph"}
@@ -65,13 +64,9 @@ class FinetuningDataset(Dataset):
         self.random_rotate = random_rotate
 
         if center_and_scale:
-            self.logger.warning(
-                "center_and_scale is deprecated: fine-tuning samples are always normalized"
-            )
+            self.logger.warning("center_and_scale is deprecated: fine-tuning samples are always normalized")
         if random_rotate:
-            self.logger.warning(
-                "random_rotate is not implemented for FinetuningDataset and will be ignored"
-            )
+            self.logger.warning("random_rotate is not implemented for FinetuningDataset and will be ignored")
 
         self.file_list = self._load_split(split)
         if lazy_load:
@@ -79,9 +74,7 @@ class FinetuningDataset(Dataset):
             self.data = None
             self.logger.info("Registered %d files", len(self.file_list))
         else:
-            self.logger.info(
-                "Loading %s data with %d workers", split, num_workers_loading
-            )
+            self.logger.info("Loading %s data with %d workers", split, num_workers_loading)
             self.load_samples(self.file_list, num_workers=num_workers_loading)
             self.logger.info("Done loading %d files", len(self.data))
 
@@ -104,9 +97,7 @@ class FinetuningDataset(Dataset):
                 raise TypeError(f"Item {index} in split {split!r} must be a JSON object")
             missing = REQUIRED_ITEM_KEYS.difference(raw_item)
             if missing:
-                raise KeyError(
-                    f"Item {index} in split {split!r} is missing keys: {sorted(missing)}"
-                )
+                raise KeyError(f"Item {index} in split {split!r} is missing keys: {sorted(missing)}")
 
             item = dict(raw_item)
             for key in PATH_ITEM_KEYS:
@@ -114,9 +105,7 @@ class FinetuningDataset(Dataset):
                 item[key] = str(path if path.is_absolute() else self.path / path)
             if isinstance(item["label"], str):
                 label_path = pathlib.Path(item["label"])
-                item["label"] = str(
-                    label_path if label_path.is_absolute() else self.path / label_path
-                )
+                item["label"] = str(label_path if label_path.is_absolute() else self.path / label_path)
             items.append(item)
         return items
 
@@ -142,9 +131,7 @@ class FinetuningDataset(Dataset):
         if num_workers < 0:
             raise ValueError("num_workers must be non-negative")
         if center_and_scale:
-            self.logger.warning(
-                "center_and_scale is deprecated: fine-tuning samples are always normalized"
-            )
+            self.logger.warning("center_and_scale is deprecated: fine-tuning samples are always normalized")
 
         items = list(items)
         self.data = []
@@ -175,18 +162,12 @@ class FinetuningDataset(Dataset):
         current_time = time.strftime("%Y%m%d%H%M%S")
         if self.data:
             self.logger.debug("Loaded sample keys: %s", sorted(self.data[0]))
-            self.logger.info(
-                "Successfully loaded %d samples at %s", len(self.data), current_time
-            )
+            self.logger.info("Successfully loaded %d samples at %s", len(self.data), current_time)
 
         if invalid_samples:
-            self.logger.warning(
-                "%d samples failed to load at %s", len(invalid_samples), current_time
-            )
+            self.logger.warning("%d samples failed to load at %s", len(invalid_samples), current_time)
             if self.log_dir is not None:
-                error_file = (
-                    self.log_dir / f"invalid_finetuning_samples_{current_time}.json"
-                )
+                error_file = self.log_dir / f"invalid_finetuning_samples_{current_time}.json"
                 self.log_dir.mkdir(parents=True, exist_ok=True)
                 with error_file.open("w", encoding="utf-8") as f:
                     json.dump(
@@ -209,9 +190,7 @@ class FinetuningDataset(Dataset):
 
     def center_and_scale(self):
         """Retain the historical method as a deprecated compatibility no-op."""
-        self.logger.warning(
-            "center_and_scale is deprecated: fine-tuning samples are already normalized"
-        )
+        self.logger.warning("center_and_scale is deprecated: fine-tuning samples are already normalized")
 
     def convert_to_float32(self, data):
         """Convert floating-point model features and targets to float32."""
@@ -269,9 +248,7 @@ class FinetuningDataset(Dataset):
                 raise ValueError("Per-face primitive features have inconsistent lengths")
 
             if nodes.shape[0] > max_facet_len:
-                indices = torch.randperm(nodes.shape[0], generator=generator)[
-                    :max_facet_len
-                ]
+                indices = torch.randperm(nodes.shape[0], generator=generator)[:max_facet_len]
                 nodes = nodes[indices]
                 in_mask = in_mask[indices]
                 tri_normal = tri_normal[indices]
@@ -285,9 +262,7 @@ class FinetuningDataset(Dataset):
                 # nodes_padded: [max_facet_len, num_points, channels]
                 nodes_padded = nodes.new_zeros((max_facet_len, *nodes.shape[1:]))
                 # tri_normal_padded: [max_facet_len, 7]
-                tri_normal_padded = tri_normal.new_zeros(
-                    (max_facet_len, *tri_normal.shape[1:])
-                )
+                tri_normal_padded = tri_normal.new_zeros((max_facet_len, *tri_normal.shape[1:]))
                 # in_mask_padded: [max_facet_len]
                 in_mask_padded = in_mask.new_zeros(max_facet_len)
                 nodes_padded[:num_nodes] = nodes
@@ -296,12 +271,8 @@ class FinetuningDataset(Dataset):
             else:
                 repeats = (max_facet_len + num_nodes - 1) // num_nodes
                 nodes_padded = torch.cat([nodes] * repeats, dim=0)[:max_facet_len]
-                tri_normal_padded = torch.cat([tri_normal] * repeats, dim=0)[
-                    :max_facet_len
-                ]
-                in_mask_padded = torch.cat([in_mask] * repeats, dim=0)[
-                    :max_facet_len
-                ]
+                tri_normal_padded = torch.cat([tri_normal] * repeats, dim=0)[:max_facet_len]
+                in_mask_padded = torch.cat([in_mask] * repeats, dim=0)[:max_facet_len]
 
             # padding_mask: [max_facet_len], True = valid, False = padded
             padding_mask = torch.zeros(max_facet_len, dtype=torch.bool)
@@ -352,10 +323,7 @@ class FinetuningDataset(Dataset):
         # points: [num_faces, num_points, 3]
         points = torch.as_tensor(data["points"]).clone()
         if points.ndim != 3 or points.shape[-1] != 3:
-            raise ValueError(
-                "points must have shape [num_faces, num_points, 3], "
-                f"got {tuple(points.shape)}"
-            )
+            raise ValueError(f"points must have shape [num_faces, num_points, 3], got {tuple(points.shape)}")
         if not torch.isfinite(points).all():
             raise ValueError("points contains NaN or infinite values")
 
@@ -383,9 +351,7 @@ class FinetuningDataset(Dataset):
                 sample, error = self._process_single_item(item)
                 if sample is not None and error == "success":
                     return sample
-                self.logger.warning(
-                    "Failed to load sample %s: %s", sample_identifier(item), error
-                )
+                self.logger.warning("Failed to load sample %s: %s", sample_identifier(item), error)
             raise RuntimeError("No valid samples could be loaded from the dataset split")
         return self.data[index]
 
@@ -416,17 +382,11 @@ class FinetuningDataset(Dataset):
         file_names = [sample["file_name"] for sample in batch]
 
         # face_counts: [batch_size]
-        face_counts = torch.tensor(
-            [sample["face"].shape[0] for sample in batch], dtype=torch.long
-        )
+        face_counts = torch.tensor([sample["face"].shape[0] for sample in batch], dtype=torch.long)
         # edge_counts: [batch_size]
-        edge_counts = torch.tensor(
-            [sample["edge"].shape[0] for sample in batch], dtype=torch.long
-        )
+        edge_counts = torch.tensor([sample["edge"].shape[0] for sample in batch], dtype=torch.long)
         # wire_counts: [batch_size]
-        wire_counts = torch.tensor(
-            [sample["edge_index"].shape[0] for sample in batch], dtype=torch.long
-        )
+        wire_counts = torch.tensor([sample["edge_index"].shape[0] for sample in batch], dtype=torch.long)
         # offsets: [batch_size]
         face_offsets = torch.cumsum(face_counts, dim=0) - face_counts
         edge_offsets = torch.cumsum(edge_counts, dim=0) - edge_counts
@@ -435,9 +395,7 @@ class FinetuningDataset(Dataset):
         adj_face_indices = []
         edge_indices = []
         wire_indices = []
-        for sample, face_offset, edge_offset, wire_offset in zip(
-            batch, face_offsets, edge_offsets, wire_offsets
-        ):
+        for sample, face_offset, edge_offset, wire_offset in zip(batch, face_offsets, edge_offsets, wire_offsets):
             # adj_face_index: [num_faces, MAX_ADJACENT_FACES]
             adj_face_indices.append(
                 self._offset_padded_indices(
@@ -476,14 +434,10 @@ class FinetuningDataset(Dataset):
         edge_feature_keys = ("edge", "edge_padding_mask")
         for key in node_feature_keys:
             # batched_graph.ndata[key]: [sum(face_counts), ...]
-            batched_graph.ndata[key] = torch.cat(
-                [sample[key] for sample in batch], dim=0
-            )
+            batched_graph.ndata[key] = torch.cat([sample[key] for sample in batch], dim=0)
         for key in edge_feature_keys:
             # batched_graph.edata[key]: [sum(edge_counts), ...]
-            batched_graph.edata[key] = torch.cat(
-                [sample[key] for sample in batch], dim=0
-            )
+            batched_graph.edata[key] = torch.cat([sample[key] for sample in batch], dim=0)
 
         # labels: [batch_size] for classification, [sum(face_counts)] for segmentation
         labels = torch.cat([sample["label"] for sample in batch], dim=0)
@@ -495,21 +449,15 @@ class FinetuningDataset(Dataset):
             # adj_face_index: [sum(num_faces), MAX_ADJACENT_FACES]
             "adj_face_index": torch.cat(adj_face_indices, dim=0),
             # adj_face_index_length: [sum(num_faces)]
-            "adj_face_index_length": torch.cat(
-                [sample["adj_face_index_length"] for sample in batch], dim=0
-            ),
+            "adj_face_index_length": torch.cat([sample["adj_face_index_length"] for sample in batch], dim=0),
             # edge_index: [sum(num_wires), MAX_EDGES_PER_WIRE]
             "edge_index": torch.cat(edge_indices, dim=0),
             # edge_index_length: [sum(num_wires)]
-            "edge_index_length": torch.cat(
-                [sample["edge_index_length"] for sample in batch], dim=0
-            ),
+            "edge_index_length": torch.cat([sample["edge_index_length"] for sample in batch], dim=0),
             # wire_index: [sum(num_faces), MAX_WIRES_PER_FACE]
             "wire_index": torch.cat(wire_indices, dim=0),
             # wire_index_length: [sum(num_faces)]
-            "wire_index_length": torch.cat(
-                [sample["wire_index_length"] for sample in batch], dim=0
-            ),
+            "wire_index_length": torch.cat([sample["wire_index_length"] for sample in batch], dim=0),
         }
         if self.use_for_classification:
             packed["label"] = labels
@@ -574,39 +522,26 @@ class FinetuningDataset(Dataset):
         num_faces = len(face["face"])
         num_edges = len(topo["edge"])
         if num_faces != graph.num_nodes():
-            raise ValueError(
-                f"Face count mismatch: features={num_faces}, graph={graph.num_nodes()}"
-            )
+            raise ValueError(f"Face count mismatch: features={num_faces}, graph={graph.num_nodes()}")
         if num_edges != graph.num_edges():
-            raise ValueError(
-                f"Edge count mismatch: features={num_edges}, graph={graph.num_edges()}"
-            )
+            raise ValueError(f"Edge count mismatch: features={num_edges}, graph={graph.num_edges()}")
         if line_graph.num_nodes() != num_edges:
             raise ValueError(
                 "Line-graph node count must equal the number of B-rep edges: "
                 f"line_graph={line_graph.num_nodes()}, edges={num_edges}"
             )
         if self.use_for_classification and label.numel() != 1:
-            raise ValueError(
-                f"Classification requires one label per solid, got {label.numel()}"
-            )
+            raise ValueError(f"Classification requires one label per solid, got {label.numel()}")
         if not self.use_for_classification and label.numel() != num_faces:
             raise ValueError(
-                "Segmentation label count must equal the number of faces: "
-                f"labels={label.numel()}, faces={num_faces}"
+                f"Segmentation label count must equal the number of faces: labels={label.numel()}, faces={num_faces}"
             )
         # uv_face_points: [num_faces, 3, 3, 3]
         if face["uv_face_points"].shape != (num_faces, 3, 3, 3):
-            raise ValueError(
-                "Unexpected face target shape: "
-                f"{tuple(face['uv_face_points'].shape)}"
-            )
+            raise ValueError(f"Unexpected face target shape: {tuple(face['uv_face_points'].shape)}")
         # uv_edge_points: [num_edges, 3, 3]
         if topo["uv_edge_points"].shape != (num_edges, 3, 3):
-            raise ValueError(
-                "Unexpected edge target shape: "
-                f"{tuple(topo['uv_edge_points'].shape)}"
-            )
+            raise ValueError(f"Unexpected edge target shape: {tuple(topo['uv_edge_points'].shape)}")
 
         data = {**face, **topo}
         data["graph"] = graph
@@ -656,13 +591,10 @@ class FinetuningDataset(Dataset):
         }
         missing = required_keys.difference(solid)
         if missing:
-            raise KeyError(
-                f"Topology file {file_path} is missing keys: {sorted(missing)}"
-            )
+            raise KeyError(f"Topology file {file_path} is missing keys: {sorted(missing)}")
         if len(solid["wire_index"]) > MAX_FACES_PER_SOLID:
             raise ValueError(
-                f"Solid contains {len(solid['wire_index'])} faces; "
-                f"the supported maximum is {MAX_FACES_PER_SOLID}"
+                f"Solid contains {len(solid['wire_index'])} faces; the supported maximum is {MAX_FACES_PER_SOLID}"
             )
 
         # adj_face_index: [num_faces, MAX_ADJACENT_FACES]
@@ -672,14 +604,10 @@ class FinetuningDataset(Dataset):
         )
         # wire_index: [num_faces, MAX_WIRES_PER_FACE]
         # wire_index_length: [num_faces]
-        wire_index, wire_index_length = pad_or_sample(
-            solid["wire_index"], MAX_WIRES_PER_FACE, dtype=torch.long
-        )
+        wire_index, wire_index_length = pad_or_sample(solid["wire_index"], MAX_WIRES_PER_FACE, dtype=torch.long)
         # edge_index: [num_wires, MAX_EDGES_PER_WIRE]
         # edge_index_length: [num_wires]
-        edge_index, edge_index_length = pad_or_sample(
-            solid["edge_index"], MAX_EDGES_PER_WIRE, dtype=torch.long
-        )
+        edge_index, edge_index_length = pad_or_sample(solid["edge_index"], MAX_EDGES_PER_WIRE, dtype=torch.long)
         return {
             # "edge": list of [num_primitives, num_points, channels] with length = num_edges
             "edge": solid["edge"],

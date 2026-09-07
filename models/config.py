@@ -55,10 +55,7 @@ class Brep2ShapeConfig:
         if invalid:
             raise ValueError(f"Model configuration values must be positive: {invalid}")
         if self.u_samples != self.v_samples:
-            raise ValueError(
-                "u_samples and v_samples must be equal because processed data "
-                "uses square UV grids"
-            )
+            raise ValueError("u_samples and v_samples must be equal because processed data uses square UV grids")
 
         head_pairs = (
             ("curve_hidden_dim", self.curve_hidden_dim, self.curve_num_heads),

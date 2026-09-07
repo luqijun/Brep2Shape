@@ -9,6 +9,7 @@ from torch.utils.checkpoint import checkpoint
 @dataclass(frozen=True)
 class EncoderOutput:
     """Face-, solid-, and optional edge-level encoder representations."""
+
     # shape: [num_faces, face_emb_dim]
     face: torch.Tensor
     # shape: [batch_size, graph_emb_dim]
@@ -33,8 +34,8 @@ def encode_brep(
 ) -> EncoderOutput:
     """Run the shared curve, surface, and graph encoding pipeline."""
     try:
-        graph = batch["graph"]                    # DGLGraph, batched solids
-        line_graph = batch["line_graph"]          # DGLGraph, line graph of batched solids
+        graph = batch["graph"]  # DGLGraph, batched solids
+        line_graph = batch["line_graph"]  # DGLGraph, line graph of batched solids
         # shape: [num_edges, num_primitives, num_points, 4*11]
         edge = graph.edata["edge"]
         # shape: [num_edges, num_primitives]

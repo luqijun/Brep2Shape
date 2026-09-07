@@ -8,19 +8,57 @@ def build_parser():
     parser.add_argument("--method", choices=("dual",), default="dual", help="Model method")
     parser.add_argument("--experiment_name", type=str, default="classification", help="Experiment name")
     parser.add_argument("--desc", type=str, default=None, help="Optional run description")
-    parser.add_argument("--dataset_dir", type=str, required=True, help="Directory containing datasplit_new.json")
+    parser.add_argument(
+        "--dataset_dir",
+        type=str,
+        required=True,
+        help="Directory containing datasplit_new.json",
+    )
     parser.add_argument("--num_classes", type=int, required=True, help="Number of classes")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--num_workers", type=int, default=0, help="Number of dataloader workers")
     parser.add_argument("--max_epochs", type=int, default=350, help="Number of epochs")
-    parser.add_argument("--precision", choices=("medium", "high", "highest"), default="medium", help="PyTorch matmul precision")
-    parser.add_argument("--gpus", type=str, default="-1", help="GPU devices for Lightning, use -1 for all GPUs")
-    parser.add_argument("--accelerator", type=str, default="ddp", choices=("ddp", "gpu", "None", "fsdp"), help="Training accelerator")
+    parser.add_argument(
+        "--precision",
+        choices=("medium", "high", "highest"),
+        default="medium",
+        help="PyTorch matmul precision",
+    )
+    parser.add_argument(
+        "--gpus",
+        type=str,
+        default="-1",
+        help="GPU devices for Lightning, use -1 for all GPUs",
+    )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="ddp",
+        choices=("ddp", "gpu", "None", "fsdp"),
+        help="Training accelerator",
+    )
     parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint file for testing")
-    parser.add_argument("--pretrain_checkpoint", type=str, default=None, help="Pretrained checkpoint for finetuning")
-    parser.add_argument("--scheduler", type=str, default="cosine", choices=("cosine", "step", "fix", "cosine_warmup"), help="Scheduler")
-    parser.add_argument("--optimizer", type=str, default="adam", choices=("adam", "adamw", "sgd"), help="Optimizer")
+    parser.add_argument(
+        "--pretrain_checkpoint",
+        type=str,
+        default=None,
+        help="Pretrained checkpoint for finetuning",
+    )
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="cosine",
+        choices=("cosine", "step", "fix", "cosine_warmup"),
+        help="Scheduler",
+    )
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="adam",
+        choices=("adam", "adamw", "sgd"),
+        help="Optimizer",
+    )
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--betas", type=float, nargs=2, default=(0.9, 0.95), help="Adam/AdamW betas")
@@ -32,7 +70,7 @@ def build_parser():
     parser.add_argument("--curve_num_heads", type=int, default=8)
     parser.add_argument("--surface_num_heads", type=int, default=8)
     parser.add_argument("--graph_num_heads", type=int, default=8)
-    parser.add_argument("--edge_num_layers",type=int,default=3)
+    parser.add_argument("--edge_num_layers", type=int, default=3)
     parser.add_argument("--surface_num_layers", type=int, default=3)
     parser.add_argument("--graph_num_layers", type=int, default=3)
     parser.add_argument("--curve_hidden_dim", type=int, default=128)
@@ -60,8 +98,18 @@ def build_parser():
 
 def _checkpoint_specs():
     return [
-        {"monitor": "val/val_loss", "filename": "best_loss", "save_last": True, "mode": "min"},
-        {"monitor": "val/val_acc", "filename": "best_acc", "save_last": True, "mode": "max"},
+        {
+            "monitor": "val/val_loss",
+            "filename": "best_loss",
+            "save_last": True,
+            "mode": "min",
+        },
+        {
+            "monitor": "val/val_acc",
+            "filename": "best_acc",
+            "save_last": True,
+            "mode": "max",
+        },
         {"filename": "epoch_{epoch:04d}", "every_n_epochs": 25, "save_top_k": -1},
     ]
 
@@ -97,6 +145,7 @@ def main():
     args = build_parser().parse_args()
     import torch
     from lightning.pytorch import seed_everything
+
     from utils.training import (
         build_trainer,
         create_run_paths,

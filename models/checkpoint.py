@@ -7,7 +7,6 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -35,9 +34,7 @@ def load_checkpoint_state_dict(
 ) -> Mapping[str, torch.Tensor]:
     """Safely load a state dict from a PyTorch or Lightning checkpoint."""
     if hasattr(torch.serialization, "add_safe_globals"):
-        torch.serialization.add_safe_globals(
-            [argparse.Namespace, pathlib.PosixPath, pathlib.WindowsPath]
-        )
+        torch.serialization.add_safe_globals([argparse.Namespace, pathlib.PosixPath, pathlib.WindowsPath])
 
     checkpoint = torch.load(
         checkpoint_path,
@@ -92,9 +89,7 @@ def load_pretrained_encoders(
             raise KeyError(f"Checkpoint does not contain the {name} encoder")
         if name == "graph" and not hasattr(module, "edge_output_proj"):
             module_state = {
-                key: value
-                for key, value in module_state.items()
-                if not key.startswith("edge_output_proj.")
+                key: value for key, value in module_state.items() if not key.startswith("edge_output_proj.")
             }
 
         incompatible = module.load_state_dict(module_state, strict=False)

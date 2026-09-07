@@ -9,7 +9,6 @@ from utils.training import build_optimizer_and_scheduler
 
 from .dual_segmentation import DualSegmentation
 
-
 LOGGER = logging.getLogger(__name__)
 
 

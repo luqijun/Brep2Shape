@@ -10,6 +10,7 @@ Usage:
   python cluster_step.py --checkpoint results/.../last.ckpt \
       --input_dir DIR_A [--input_dir DIR_B ...] --output_dir clustered
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,15 +31,23 @@ from models.pretraining import PretrainingPL
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True, help="Pretraining ckpt from pretrain.py")
-    parser.add_argument("--input_dir", action="append", required=True,
-                        help="STEP file or directory (repeatable, recursive)")
+    parser.add_argument(
+        "--input_dir",
+        action="append",
+        required=True,
+        help="STEP file or directory (repeatable, recursive)",
+    )
     parser.add_argument("--output_dir", required=True)
     parser.add_argument("--max_clusters", type=int, default=50)
     parser.add_argument("--min_clusters", type=int, default=2)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--preprocess_workers", type=int, default=8,
-                        help="CPU processes for STEP preprocessing")
+    parser.add_argument(
+        "--preprocess_workers",
+        type=int,
+        default=8,
+        help="CPU processes for STEP preprocessing",
+    )
     parser.add_argument("--max_faces", type=int, default=256)
     parser.add_argument("--silhouette_sample", type=int, default=5000)
     parser.add_argument("--seed", type=int, default=0)
@@ -73,14 +82,14 @@ def build_cache(files, cache_dir: pathlib.Path, args) -> dict[str, str]:
     skipped = []
     if todo:
         new_manifest, skipped = step_preprocess.preprocess_files(
-            todo, str(cache_dir),
-            workers=args.preprocess_workers, max_faces=args.max_faces,
+            todo,
+            str(cache_dir),
+            workers=args.preprocess_workers,
+            max_faces=args.max_faces,
         )
         manifest.update(new_manifest)
 
-    step_preprocess.write_datasplit(
-        str(cache_dir), manifest, splits=("test",)
-    )
+    step_preprocess.write_datasplit(str(cache_dir), manifest, splits=("test",))
     step_preprocess.write_meta(str(cache_dir), manifest, skipped)
     return manifest
 
@@ -90,8 +99,10 @@ def extract_embeddings(dataset_dir: str, checkpoint: str, args) -> np.ndarray:
     device = torch.device(args.device)
     dataset = PretrainingDataset(dataset_dir, split="test", lazy_load=True)
     loader = dataset.get_dataloader(
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.num_workers, drop_last=False,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        drop_last=False,
     )
     model = PretrainingPL.load_from_checkpoint(checkpoint, map_location="cpu")
     model.eval().to(device)
@@ -163,16 +174,21 @@ def main():
         return
 
     embeddings = extract_embeddings(str(cache_dir), args.checkpoint, args)
-    names = [item["face"].split("/")[-1][:-3] for item in json.loads(
-        (cache_dir / "datasplit.json").read_text(encoding="utf-8"))["test"]]
+    names = [
+        item["face"].split("/")[-1][:-3]
+        for item in json.loads((cache_dir / "datasplit.json").read_text(encoding="utf-8"))["test"]
+    ]
     assert len(names) == len(embeddings), (len(names), len(embeddings))
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     embeddings = embeddings / np.clip(norms, 1e-12, None)
     print(f"Embeddings: {embeddings.shape}")
 
     best_k, best_score, all_scores = estimate_k(
-        embeddings, args.min_clusters, args.max_clusters,
-        args.silhouette_sample, args.seed,
+        embeddings,
+        args.min_clusters,
+        args.max_clusters,
+        args.silhouette_sample,
+        args.seed,
     )
     print(f"Auto-selected k={best_k} (silhouette={best_score})")
 
@@ -180,9 +196,8 @@ def main():
         sample_labels = np.zeros(len(embeddings), dtype=int)
     else:
         from sklearn.cluster import KMeans
-        sample_labels = KMeans(
-            n_clusters=best_k, n_init=10, random_state=args.seed
-        ).fit_predict(embeddings)
+
+        sample_labels = KMeans(n_clusters=best_k, n_init=10, random_state=args.seed).fit_predict(embeddings)
 
     # file-level labels: majority vote over its solids
     file_votes: dict[str, Counter] = defaultdict(Counter)

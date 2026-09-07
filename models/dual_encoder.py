@@ -7,7 +7,6 @@ from torch import nn
 
 from .encoders import BezierEncoderMLP, PositionalEncoding, TransformerEncoderBlock
 
-
 ACTIVATION_FACTORIES = {
     "gelu": nn.GELU,
     "tanh": nn.Tanh,
@@ -47,11 +46,12 @@ def _mean_multiedge_bias(
     # shape: [num_nodes, num_nodes, num_heads]
     return aggregated.view(num_nodes, num_nodes, edge_bias.shape[1])
 
+
 class MLP(nn.Module):
     """Feed-forward network with optional residual hidden layers."""
 
-    def __init__(self, n_input, n_hidden, n_output, n_layers=1, act='gelu', res=True):
-        super(MLP, self).__init__()
+    def __init__(self, n_input, n_hidden, n_output, n_layers=1, act="gelu", res=True):
+        super().__init__()
 
         try:
             activation_factory = ACTIVATION_FACTORIES[act.lower()]
@@ -65,22 +65,20 @@ class MLP(nn.Module):
         self.linear_pre = nn.Sequential(nn.Linear(n_input, n_hidden), activation_factory())
         self.linear_post = nn.Linear(n_hidden, n_output)
         self.linears = nn.ModuleList(
-            [
-                nn.Sequential(nn.Linear(n_hidden, n_hidden), activation_factory())
-                for _ in range(n_layers)
-            ]
+            [nn.Sequential(nn.Linear(n_hidden, n_hidden), activation_factory()) for _ in range(n_layers)]
         )
 
     def forward(self, x):
         # x: [*, n_input]
-        x = self.linear_pre(x)                        # [*, n_hidden]
+        x = self.linear_pre(x)  # [*, n_hidden]
         for i in range(self.n_layers):
             if self.res:
-                x = self.linears[i](x) + x            # [*, n_hidden]
+                x = self.linears[i](x) + x  # [*, n_hidden]
             else:
-                x = self.linears[i](x)                # [*, n_hidden]
-        x = self.linear_post(x)                       # [*, n_output]
+                x = self.linears[i](x)  # [*, n_hidden]
+        x = self.linear_post(x)  # [*, n_output]
         return x
+
 
 class SubgraphPE(nn.Module):
     """Apply sinusoidal positions independently within each graph in a batch."""
@@ -112,8 +110,7 @@ class SubgraphPE(nn.Module):
         # shape: [max_len, 1]
         position = torch.arange(0, max_len, device=device, dtype=dtype).unsqueeze(1)
         # shape: [d_model // 2]
-        div_term = torch.exp(torch.arange(0, d_model, 2, device=device, dtype=dtype)
-                             * (-math.log(10000.0) / d_model))
+        div_term = torch.exp(torch.arange(0, d_model, 2, device=device, dtype=dtype) * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         odd_dimensions = pe[:, 1::2].shape[1]
         pe[:, 1::2] = torch.cos(position * div_term[:odd_dimensions])
@@ -122,8 +119,9 @@ class SubgraphPE(nn.Module):
     def _maybe_extend(self, need_len: int, device, dtype):
         if need_len <= self.pe.size(0):
             return
+        # Extend the cached encoding only when a larger graph is encountered.
         new_pe = self._build_pe(need_len, self.d_model, device=device, dtype=dtype)
-        new_pe[:self.pe.size(0)] = self.pe.to(device=device, dtype=dtype)
+        new_pe[: self.pe.size(0)] = self.pe.to(device=device, dtype=dtype)
         self.pe = new_pe
 
     @torch.no_grad()
@@ -131,11 +129,7 @@ class SubgraphPE(nn.Module):
         sizes = g.batch_num_nodes().to(device)
         pos_list = [torch.arange(int(n), device=device) for n in sizes]
         # shape: [total_nodes]
-        pos_ids = (
-            torch.cat(pos_list, dim=0)
-            if pos_list
-            else torch.empty(0, device=device, dtype=torch.long)
-        )
+        pos_ids = torch.cat(pos_list, dim=0) if pos_list else torch.empty(0, device=device, dtype=torch.long)
         return pos_ids
 
     def forward(self, g: dgl.DGLGraph, x: torch.Tensor) -> torch.Tensor:
@@ -149,6 +143,7 @@ class SubgraphPE(nn.Module):
         # shape: [total_nodes, d_model]
         pe_slice = self.pe.index_select(dim=0, index=pos_ids).to(dtype=dtype)
         return x + pe_slice
+
 
 class FaceTransformerLayer(nn.Module):
     """Dense multi-head self-attention over the faces of each solid."""
@@ -170,7 +165,7 @@ class FaceTransformerLayer(nn.Module):
         self.nhead = nhead
         self.curve_dim = curve_dim
         self.last_layer = last_layer
-        
+
         self.ln_1 = nn.LayerNorm(d_model)
 
         self.q_proj = nn.Linear(d_model, d_model, bias=False)
@@ -186,18 +181,14 @@ class FaceTransformerLayer(nn.Module):
 
         self.attn_dropout = nn.Dropout(attention_dropout)
 
-        self.out_proj = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.Dropout(dropout)
-        )
+        self.out_proj = nn.Sequential(nn.Linear(d_model, d_model), nn.Dropout(dropout))
         self.ln_2 = nn.LayerNorm(d_model)
         self.mlp = MLP(d_model, dim_feedforward, d_model, n_layers=0, act=act, res=False)
 
         if self.last_layer:
             self.ln_3 = nn.LayerNorm(d_model)
             self.mlp_2 = nn.Linear(d_model, d_model)
-        
-        
+
     def forward(
         self,
         g: dgl.DGLGraph,
@@ -207,22 +198,17 @@ class FaceTransformerLayer(nn.Module):
         """
         Args:
             g: Batched DGL graph whose components represent individual solids.
-            node_feat: Face features with shape [num_faces, d_model].
-            edge_feat: Edge features with shape [num_edges, edge_dim].
+            node_feat: Face features with shape ``[num_faces, d_model]``.
+            edge_feat: Edge features with shape ``[num_edges, edge_dim]``.
         """
         num_nodes = node_feat.shape[0]
         if g.num_nodes() != num_nodes:
-            raise ValueError(
-                f"Graph has {g.num_nodes()} faces but received {num_nodes} features"
-            )
+            raise ValueError(f"Graph has {g.num_nodes()} faces but received {num_nodes} features")
         if g.num_edges() != edge_feat.shape[0]:
-            raise ValueError(
-                f"Graph has {g.num_edges()} edges but received "
-                f"{edge_feat.shape[0]} edge features"
-            )
+            raise ValueError(f"Graph has {g.num_edges()} edges but received {edge_feat.shape[0]} edge features")
 
-        node_feat_res = node_feat                        # [num_faces, d_model]
-        node_feat = self.ln_1(node_feat)                 # [num_faces, d_model]
+        node_feat_res = node_feat  # [num_faces, d_model]
+        node_feat = self.ln_1(node_feat)  # [num_faces, d_model]
         src, dst = g.edges()
 
         # q, k, v: [num_faces, nhead, d_k] where d_k = d_model // nhead
@@ -246,10 +232,7 @@ class FaceTransformerLayer(nn.Module):
             component_k = k[node_start:node_end]
             component_v = v[node_start:node_end]
             # scores: [nhead, component_nodes, component_nodes]
-            scores = (
-                torch.einsum("ihd,jhd->hij", component_q, component_k)
-                / self.scale
-            )
+            scores = torch.einsum("ihd,jhd->hij", component_q, component_k) / self.scale
             if curve_bias is not None:
                 local_src = src[edge_start:edge_end] - node_start
                 local_dst = dst[edge_start:edge_end] - node_start
@@ -266,22 +249,21 @@ class FaceTransformerLayer(nn.Module):
             # weights: [nhead, component_nodes, component_nodes]
             weights = self.attn_dropout(F.softmax(scores, dim=-1))
             # attended: [component_nodes, nhead, d_k]
-            attended_components.append(
-                torch.einsum("hij,jhd->ihd", weights, component_v)
-            )
+            attended_components.append(torch.einsum("hij,jhd->ihd", weights, component_v))
             node_start = node_end
             edge_start = edge_end
 
         # node_feat: [num_faces, d_model]
         node_feat = torch.cat(attended_components, dim=0).reshape(num_nodes, -1)
-        node_feat = self.out_proj(node_feat)             # [num_faces, d_model]
-        node_feat = node_feat_res + node_feat            # [num_faces, d_model]
+        node_feat = self.out_proj(node_feat)  # [num_faces, d_model]
+        node_feat = node_feat_res + node_feat  # [num_faces, d_model]
         node_feat = self.mlp(self.ln_2(node_feat)) + node_feat  # [num_faces, d_model]
 
         if self.last_layer:
-            node_feat = self.mlp_2(self.ln_3(node_feat)) # [num_faces, d_model]
-        
+            node_feat = self.mlp_2(self.ln_3(node_feat))  # [num_faces, d_model]
+
         return node_feat
+
 
 class EdgeTransformerLayer(nn.Module):
     """Dense multi-head self-attention over B-rep edges within each solid."""
@@ -309,7 +291,7 @@ class EdgeTransformerLayer(nn.Module):
         self.q_proj = nn.Linear(d_model, d_model, bias=False)
         self.k_proj = nn.Linear(d_model, d_model, bias=False)
         self.v_proj = nn.Linear(d_model, d_model, bias=False)
-        
+
         self.d_k = d_model // nhead
         self.scale = math.sqrt(self.d_k)
 
@@ -318,11 +300,8 @@ class EdgeTransformerLayer(nn.Module):
 
         self.attn_dropout = nn.Dropout(attention_dropout)
 
-        self.out_proj = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.Dropout(dropout)
-        )
-        
+        self.out_proj = nn.Sequential(nn.Linear(d_model, d_model), nn.Dropout(dropout))
+
         self.ln_2 = nn.LayerNorm(d_model)
         self.mlp = MLP(d_model, dim_feedforward, d_model, n_layers=0, act=act, res=False)
 
@@ -351,30 +330,19 @@ class EdgeTransformerLayer(nn.Module):
     ):
         device = edge_feat.device
         if L.num_nodes() != edge_feat.shape[0]:
-            raise ValueError(
-                f"Line graph has {L.num_nodes()} nodes but received "
-                f"{edge_feat.shape[0]} edge features"
-            )
+            raise ValueError(f"Line graph has {L.num_nodes()} nodes but received {edge_feat.shape[0]} edge features")
         if g.num_edges() != edge_feat.shape[0]:
-            raise ValueError(
-                f"Graph has {g.num_edges()} edges but received "
-                f"{edge_feat.shape[0]} edge features"
-            )
+            raise ValueError(f"Graph has {g.num_edges()} edges but received {edge_feat.shape[0]} edge features")
         if g.num_nodes() != node_feat.shape[0]:
-            raise ValueError(
-                f"Graph has {g.num_nodes()} faces but received "
-                f"{node_feat.shape[0]} face features"
-            )
+            raise ValueError(f"Graph has {g.num_nodes()} faces but received {node_feat.shape[0]} face features")
 
         graph_edge_counts = g.batch_num_edges().tolist()
         line_node_counts = L.batch_num_nodes().tolist()
         if graph_edge_counts != line_node_counts:
-            raise ValueError(
-                "Each line-graph component must contain one node per B-rep edge"
-            )
+            raise ValueError("Each line-graph component must contain one node per B-rep edge")
 
-        edge_feat_res = edge_feat                        # [num_edges, d_model]
-        edge_feat = self.ln_1(edge_feat)                 # [num_edges, d_model]
+        edge_feat_res = edge_feat  # [num_edges, d_model]
+        edge_feat = self.ln_1(edge_feat)  # [num_edges, d_model]
         num_edges = edge_feat.shape[0]
 
         # q, k, v: [num_edges, nhead, d_k]
@@ -394,6 +362,8 @@ class EdgeTransformerLayer(nn.Module):
             x_1 = g_src[dst_eid]
             w_1 = g_dst[dst_eid]
             shares_face = (u_1 == x_1) | (u_1 == w_1) | (v_1 == x_1) | (v_1 == w_1)
+            if not bool(shares_face.all()):
+                raise ValueError("Line graph contains an edge between B-rep edges that do not share a face")
             shared_nid = torch.where(
                 u_1 == x_1,
                 u_1,
@@ -417,10 +387,7 @@ class EdgeTransformerLayer(nn.Module):
             component_k = k[edge_start:edge_end]
             component_v = v[edge_start:edge_end]
             # scores: [nhead, component_edges, component_edges]
-            scores = (
-                torch.einsum("ihd,jhd->hij", component_q, component_k)
-                / self.scale
-            )
+            scores = torch.einsum("ihd,jhd->hij", component_q, component_k) / self.scale
             if line_bias is not None:
                 local_src = l_src[line_edge_start:line_edge_end] - edge_start
                 local_dst = l_dst[line_edge_start:line_edge_end] - edge_start
@@ -437,22 +404,21 @@ class EdgeTransformerLayer(nn.Module):
             # weights: [nhead, component_edges, component_edges]
             weights = self.attn_dropout(F.softmax(scores, dim=-1))
             # attended: [component_edges, nhead, d_k]
-            attended_components.append(
-                torch.einsum("hij,jhd->ihd", weights, component_v)
-            )
+            attended_components.append(torch.einsum("hij,jhd->ihd", weights, component_v))
             edge_start = edge_end
             line_edge_start = line_edge_end
 
         # edge_feat: [num_edges, d_model]
         edge_feat = torch.cat(attended_components, dim=0).reshape(num_edges, -1)
-        edge_feat = self.out_proj(edge_feat)             # [num_edges, d_model]
+        edge_feat = self.out_proj(edge_feat)  # [num_edges, d_model]
 
-        edge_feat = edge_feat + edge_feat_res            # [num_edges, d_model]
+        edge_feat = edge_feat + edge_feat_res  # [num_edges, d_model]
         edge_feat = self.mlp(self.ln_2(edge_feat)) + edge_feat  # [num_edges, d_model]
 
         if self.last_layer:
-            edge_feat = self.mlp_2(self.ln_3(edge_feat)) # [num_edges, d_model]
+            edge_feat = self.mlp_2(self.ln_3(edge_feat))  # [num_edges, d_model]
         return edge_feat
+
 
 class DualAwareBlock(nn.Module):
     """Update face and edge streams with coupled transformer layers."""
@@ -471,7 +437,9 @@ class DualAwareBlock(nn.Module):
     ):
         super().__init__()
         self.edge_layer = EdgeTransformerLayer(
-            d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, 
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
             dropout=dropout,
             attention_dropout=attention_dropout,
             use_node_bias=use_node_bias,
@@ -479,7 +447,9 @@ class DualAwareBlock(nn.Module):
             last_layer=last_layer,
         )
         self.node_layer = FaceTransformerLayer(
-            d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward,
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
             dropout=dropout,
             attention_dropout=attention_dropout,
             curve_dim=d_model,
@@ -490,14 +460,15 @@ class DualAwareBlock(nn.Module):
 
     def forward(self, g, L, node_feat, edge_feat):
         # node_feat: [num_faces, d_model], edge_feat: [num_edges, d_model]
-        n_feat_new = self.node_layer(g, node_feat, edge_feat)   # [num_faces, d_model]
+        n_feat_new = self.node_layer(g, node_feat, edge_feat)  # [num_faces, d_model]
         e_feat_new = self.edge_layer(
             L=L,
             g=g,
             edge_feat=edge_feat,
             node_feat=node_feat,
-        )                                                      # [num_edges, d_model]
+        )  # [num_edges, d_model]
         return n_feat_new, e_feat_new
+
 
 class DualCurveEncoder(nn.Module):
     """Encode the Bezier primitives of each B-rep edge."""
@@ -510,7 +481,7 @@ class DualCurveEncoder(nn.Module):
         hidden_dim,
         n_layers,
         n_heads,
-        act='gelu',
+        act="gelu",
         norm_first=False,
         use_layer_norm=True,
     ):
@@ -537,13 +508,11 @@ class DualCurveEncoder(nn.Module):
         self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
         self.pos = PositionalEncoding(hidden_dim, dropout)
         self.out_proj = nn.Linear(hidden_dim, curve_emb_dim)
+
     def forward(self, control_pts, mask):
         # control_pts: [num_edges, num_primitives, num_points, channels]
         if control_pts.ndim != 4:
-            raise ValueError(
-                "Curve control points must have shape "
-                "[num_edges, num_primitives, num_points, channels]"
-            )
+            raise ValueError("Curve control points must have shape [num_edges, num_primitives, num_points, channels]")
         # mask: [num_edges, num_primitives]
         if mask.shape != control_pts.shape[:2]:
             raise ValueError("Curve padding mask must match the first two input axes")
@@ -559,7 +528,7 @@ class DualCurveEncoder(nn.Module):
             [self.class_token.repeat(curve_emb.shape[0], 1, 1), curve_emb],
             dim=1,
         )
-        curve_emb = self.pos(curve_emb)               # [num_edges, num_primitives + 1, hidden_dim]
+        curve_emb = self.pos(curve_emb)  # [num_edges, num_primitives + 1, hidden_dim]
         # mask: [num_edges, num_primitives + 1]
         mask = torch.cat(
             [torch.ones(mask.shape[0], 1, dtype=torch.bool, device=mask.device), mask],
@@ -570,8 +539,9 @@ class DualCurveEncoder(nn.Module):
         curve_emb = self.transformer_encoder(curve_emb, src_mask)
         # curve_emb: [num_edges, hidden_dim] (take class token)
         curve_emb = curve_emb[:, 0]
-        curve_emb = self.out_proj(curve_emb)          # [num_edges, curve_emb_dim]
+        curve_emb = self.out_proj(curve_emb)  # [num_edges, curve_emb_dim]
         return curve_emb
+
 
 class DualSurfaceEncoder(nn.Module):
     """Encode the Bezier primitives and visibility data of each face."""
@@ -585,7 +555,7 @@ class DualSurfaceEncoder(nn.Module):
         n_layers,
         n_heads,
         use_class_token=False,
-        act='gelu',
+        act="gelu",
         norm_first=False,
         use_layer_norm=False,
     ):
@@ -615,14 +585,12 @@ class DualSurfaceEncoder(nn.Module):
             self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
         self.pos = PositionalEncoding(hidden_dim, dropout)
         self.out_proj = nn.Linear(hidden_dim, surface_emb_dim)
+
     def forward(self, control_pts, tri_normal, in_mask, padding_mask):
         # control_pts: [num_faces, num_primitives, num_points, channels]
         if control_pts.ndim != 4:
-            raise ValueError(
-                "Surface control points must have shape "
-                "[num_faces, num_primitives, num_points, channels]"
-            )
-        expected_shape = control_pts.shape[:2]        # (num_faces, num_primitives)
+            raise ValueError("Surface control points must have shape [num_faces, num_primitives, num_points, channels]")
+        expected_shape = control_pts.shape[:2]  # (num_faces, num_primitives)
         # tri_normal: [num_faces, num_primitives, 7]
         if tri_normal.shape[:2] != expected_shape:
             raise ValueError("Triangle normals must align with surface primitives")
@@ -630,6 +598,8 @@ class DualSurfaceEncoder(nn.Module):
         if in_mask.shape != expected_shape or padding_mask.shape != expected_shape:
             raise ValueError("Surface masks must match the first two input axes")
         mask = padding_mask.to(dtype=torch.bool)
+        if not bool(mask.any(dim=1).all()):
+            raise ValueError("Every face must contain at least one valid primitive")
 
         B, L = expected_shape
         # x: [num_faces, num_primitives, flattened_dim + 7 + 1]
@@ -639,14 +609,14 @@ class DualSurfaceEncoder(nn.Module):
         )
         # surface_emb: [num_faces, num_primitives, hidden_dim]
         surface_emb = self.bezier_encoder(x.view(-1, x.shape[-1])).view(B, L, -1)
-        
+
         if self.use_class_token:
             # surface_emb: [num_faces, num_primitives + 1, hidden_dim]
             surface_emb = torch.cat(
                 [self.class_token.repeat(surface_emb.shape[0], 1, 1), surface_emb],
                 dim=1,
             )
-            surface_emb = self.pos(surface_emb)       # [num_faces, num_primitives + 1, hidden_dim]
+            surface_emb = self.pos(surface_emb)  # [num_faces, num_primitives + 1, hidden_dim]
             # mask: [num_faces, num_primitives + 1]
             mask = torch.cat(
                 [
@@ -656,20 +626,21 @@ class DualSurfaceEncoder(nn.Module):
                 dim=1,
             )
         else:
-            surface_emb = self.pos(surface_emb)       # [num_faces, num_primitives, hidden_dim]
-        
+            surface_emb = self.pos(surface_emb)  # [num_faces, num_primitives, hidden_dim]
+
         src_mask = torch.logical_not(mask)
         surface_emb = self.transformer_encoder(surface_emb, src_mask)
 
         if self.use_class_token:
-            feature = surface_emb[:, 0]               # [num_faces, hidden_dim]
+            feature = surface_emb[:, 0]  # [num_faces, hidden_dim]
         else:
             # surface_emb: [num_faces, num_primitives, hidden_dim]
             surface_emb = surface_emb.masked_fill(torch.logical_not(mask.unsqueeze(-1)), 0)
-            count = mask.sum(dim=1).clamp_min(1)      # [num_faces]
+            count = mask.sum(dim=1).clamp_min(1)  # [num_faces]
             feature = surface_emb.sum(dim=1) / count.unsqueeze(-1)  # [num_faces, hidden_dim]
-        feature = self.out_proj(feature)              # [num_faces, surface_emb_dim]
+        feature = self.out_proj(feature)  # [num_faces, surface_emb_dim]
         return feature
+
 
 class DualGraphEncoder(nn.Module):
     """Jointly encode face and edge features and pool a solid embedding."""
@@ -677,7 +648,7 @@ class DualGraphEncoder(nn.Module):
     def __init__(
         self,
         input_surface_dim: int,
-        input_edge_dim: int, 
+        input_edge_dim: int,
         output_dim: int,
         hidden_dim: int = 128,
         num_layers: int = 6,
@@ -688,12 +659,12 @@ class DualGraphEncoder(nn.Module):
         add_positional_encoding: bool = False,
         use_node_bias: bool = False,
         use_edge_bias: bool = False,
-        act='gelu',
+        act="gelu",
         return_edge_feat: bool = False,
         add_edge_to_graph: bool = False,
     ):
         super().__init__()
-        
+
         self.input_surface_dim = input_surface_dim
         self.input_edge_dim = input_edge_dim
         self.output_dim = output_dim
@@ -707,30 +678,34 @@ class DualGraphEncoder(nn.Module):
         if add_positional_encoding:
             self.node_pos_encoder = SubgraphPE(hidden_dim)
             self.edge_pos_encoder = SubgraphPE(hidden_dim)
-        
-        self.transformer_layers = nn.ModuleList([
-            DualAwareBlock(
-                d_model=hidden_dim,
-                nhead=num_heads, 
-                dim_feedforward=dim_feedforward,
-                dropout=dropout,
-                attention_dropout=attention_dropout,
-                use_node_bias=use_node_bias,
-                use_edge_bias=use_edge_bias,
-                act=act,
-                last_layer=(i == num_layers - 1)
-            ) for i in range(num_layers)
-        ])
-        
+
+        # The final block applies the output transformation used by the paper.
+        self.transformer_layers = nn.ModuleList(
+            [
+                DualAwareBlock(
+                    d_model=hidden_dim,
+                    nhead=num_heads,
+                    dim_feedforward=dim_feedforward,
+                    dropout=dropout,
+                    attention_dropout=attention_dropout,
+                    use_node_bias=use_node_bias,
+                    use_edge_bias=use_edge_bias,
+                    act=act,
+                    last_layer=(i == num_layers - 1),
+                )
+                for i in range(num_layers)
+            ]
+        )
+
         self.node_output_proj = nn.Linear(hidden_dim, input_surface_dim)
         if return_edge_feat:
             self.edge_output_proj = nn.Linear(hidden_dim, input_edge_dim)
-        
+
         graph_input_dim = hidden_dim + (hidden_dim if add_edge_to_graph else 0)
         self.graph_proj = nn.Linear(graph_input_dim, output_dim)
-        
+
         self.dropout = nn.Dropout(dropout)
-        
+
     def forward(
         self,
         batched_graph: dgl.DGLGraph,
@@ -767,16 +742,16 @@ class DualGraphEncoder(nn.Module):
             )
 
         if self.add_positional_encoding:
-            node_feat_proj = self.node_pos_encoder(g, node_feat_proj)   # [num_faces, hidden_dim]
-            edge_feat_proj = self.edge_pos_encoder(L, edge_feat_proj)   # [num_edges, hidden_dim]
-        
-        node_feat_proj = self.dropout(node_feat_proj)   # [num_faces, hidden_dim]
-        edge_feat_proj = self.dropout(edge_feat_proj)   # [num_edges, hidden_dim]
-        
+            node_feat_proj = self.node_pos_encoder(g, node_feat_proj)  # [num_faces, hidden_dim]
+            edge_feat_proj = self.edge_pos_encoder(L, edge_feat_proj)  # [num_edges, hidden_dim]
+
+        node_feat_proj = self.dropout(node_feat_proj)  # [num_faces, hidden_dim]
+        edge_feat_proj = self.dropout(edge_feat_proj)  # [num_edges, hidden_dim]
+
         x, e = node_feat_proj, edge_feat_proj
         for block in self.transformer_layers:
-            x, e = block(g, L, x, e)                    # x: [num_faces, hidden_dim], e: [num_edges, hidden_dim]
-        
+            x, e = block(g, L, x, e)  # x: [num_faces, hidden_dim], e: [num_edges, hidden_dim]
+
         # node_embeddings: [num_faces, input_surface_dim]
         node_embeddings = self.node_output_proj(x)
         if self.return_edge_feat:

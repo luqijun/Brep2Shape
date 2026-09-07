@@ -17,10 +17,7 @@ class UVPointPrediction(nn.Module):
     def __init__(self, args):
         super().__init__()
         if args.u_samples != args.v_samples:
-            raise ValueError(
-                "u_samples and v_samples must be equal because processed data "
-                "uses square UV grids"
-            )
+            raise ValueError("u_samples and v_samples must be equal because processed data uses square UV grids")
         self.curve_layer = DualCurveEncoder(
             input_dim=4 * 11,
             curve_emb_dim=args.curve_emb_dim,
@@ -193,12 +190,12 @@ class PretrainingPL(pl.LightningModule):
         # edge_loss: scalar
         edge_loss = self.mse_loss(
             edge_predictions,
-            graph.edata["uv_edge_points"],            # [num_edges, u_samples, 3]
+            graph.edata["uv_edge_points"],  # [num_edges, u_samples, 3]
         )
         # face_loss: scalar
         face_loss = self.mse_loss(
             face_predictions,
-            graph.ndata["uv_face_points"],            # [num_faces, u_samples, v_samples, 3]
+            graph.ndata["uv_face_points"],  # [num_faces, u_samples, v_samples, 3]
         )
         loss = edge_loss + face_loss
         batch_size = graph.batch_size
