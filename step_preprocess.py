@@ -130,6 +130,10 @@ def process_solid(compound, solid, max_faces: int, num_samples: int, rng) -> dic
         adj = list(dict.fromkeys(adj))
         if not adj:
             continue
+        # 非流形边（邻接面 > 2）无法由单条图边（仅两个端点）表达，第 3 个面产生的
+        # line-graph 配对会违反 dual_encoder 的共面不变量（models/dual_encoder.py:365），丢弃。
+        if len(adj) > 2:
+            continue
         edge_cps.append((cps, _edge_uv_points(edge)))
         edge_adj.append(adj)
         kept_edge_idx.append(ei)
